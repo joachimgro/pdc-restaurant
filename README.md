@@ -103,7 +103,53 @@ queue = "pdc-{client-slug}-queue"
 
 ---
 
-### 4 — Set Twilio secrets
+### 4 — Set up Resend (email auth)
+
+The platform uses [Resend](https://resend.com) to send magic link sign-in emails. You need
+a Resend account and a verified sending domain before the login flow will work in production.
+
+#### 4a — Create a Resend account and verify your domain
+
+1. Sign up at [resend.com](https://resend.com)
+2. Go to **Domains** → **Add Domain** and enter the domain you want to send from
+   (e.g. `phiofdigital.com`). Resend will give you DNS records to add.
+3. Add those records in your DNS provider (Cloudflare DNS, etc.) and click **Verify**.
+4. Once verified, your domain is ready to send from.
+
+#### 4b — Get your API key
+
+Go to **API Keys** → **Create API Key** in the Resend dashboard. Copy the key — you'll
+only see it once.
+
+#### 4c — Configure the Worker
+
+```bash
+cd workers/api
+
+# Store the API key as a secret (never put it in wrangler.toml)
+wrangler secret put RESEND_API_KEY
+# Paste the key when prompted
+```
+
+Then update `workers/api/wrangler.toml` with your verified sender address and deployed app URL:
+
+```toml
+RESEND_FROM_EMAIL = "noreply@phiofdigital.com"   # must match a verified Resend domain
+APP_URL = "https://your-app.vercel.app"          # where magic link clicks land (your Next.js URL)
+```
+
+> **Local dev:** If `RESEND_API_KEY` is not set in `.dev.vars`, magic link URLs are printed
+> to the Worker console instead of being emailed. This lets you test the full login flow
+> without a Resend account.
+
+#### 4d — First admin
+
+The migration seeds `SUPER_ADMIN_EMAIL` (default `justphiof@gmail.com`) as the first admin
+automatically. Additional admins can be added via the Admin panel → Admins tab after first login.
+
+---
+
+### 5 — Set Twilio secrets
 
 Twilio credentials are stored as Worker secrets (never in wrangler.toml or .env):
 
@@ -125,7 +171,7 @@ See `workers/api/TWILIO.md` for the full Twilio webhook setup.
 
 ---
 
-### 5 — Add client knowledge
+### 6 — Add client knowledge
 
 Knowledge chunks are what the AI uses to answer leads' questions. They live in:
 
@@ -146,7 +192,7 @@ See `docs/knowledge-guide.md` for detailed guidance and chunk templates.
 
 ---
 
-### 6 — Populate `packages/seed-data/src/leads.ts`
+### 7 — Populate `packages/seed-data/src/leads.ts`
 
 Update `LOCATIONS` with the client's real locations. These are inserted into the DB on first
 seed and shown in the inbox sidebar.
@@ -156,7 +202,7 @@ If you're setting up a demo/dev instance with `ENABLE_DEMO_TOOLS=true`, add demo
 
 ---
 
-### 7 — Update AI persona in `workers/api/migrations/0002_ai_knowledge.sql`
+### 8 — Update AI persona in `workers/api/migrations/0002_ai_knowledge.sql`
 
 Uncomment the `INSERT OR IGNORE INTO ai_config` block and fill in:
 
@@ -169,7 +215,7 @@ Admin panel → AI Config after first deploy.
 
 ---
 
-### 8 — Update web app branding
+### 9 — Update web app branding
 
 Open `apps/web/src/app/layout.tsx` and update:
 
@@ -184,7 +230,7 @@ Update colours, logo, and any copy in `apps/web/src/app/globals.css` and the com
 
 ---
 
-### 9 — Deploy
+### 10 — Deploy
 
 ```bash
 # From the repo root:
@@ -193,18 +239,20 @@ pnpm deploy:remote
 
 This script:
 1. Installs dependencies
-2. Applies D1 migrations (creates tables)
+2. Applies D1 migrations (creates tables + seeds super admin)
 3. Ensures the Vectorize index exists
 4. Deploys the Worker
 5. Ingests knowledge chunks into Vectorize
 6. Writes `apps/web/.env.local` with the deployed Worker URL
 7. Prints next steps
 
-After deploy, open the Admin panel to verify AI config, knowledge, and Twilio status.
+After deploy, go to the app URL → you'll land on `/login`. Enter the super admin email
+and you'll receive a magic link. From the Admin panel you can then add more admins,
+configure AI, and verify knowledge is ingested correctly.
 
 ---
 
-### 10 — Set the web app CORS origin
+### 11 — Set the web app CORS origin
 
 Once you know the final web app URL (Vercel, Pages, etc.), update `CORS_ORIGIN` in
 `workers/api/wrangler.toml`:
