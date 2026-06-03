@@ -9,6 +9,14 @@ export interface Env {
   ENABLE_DEMO_TOOLS?: string;
   /** Set to "true" to use template stub instead of Workers AI */
   AI_DISABLED?: string;
+  /** Resend API key — set via: wrangler secret put RESEND_API_KEY */
+  RESEND_API_KEY?: string;
+  /** Verified sender address in Resend, e.g. noreply@yourdomain.com */
+  RESEND_FROM_EMAIL?: string;
+  /** Deployed Next.js app URL — used to build magic link URLs */
+  APP_URL?: string;
+  /** Email of the super admin — cannot be removed via API */
+  SUPER_ADMIN_EMAIL?: string;
   AI_EMBED_MODEL?: string;
   TELNYX_API_KEY?: string;
   TWILIO_ACCOUNT_SID?: string;

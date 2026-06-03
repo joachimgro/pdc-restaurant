@@ -358,11 +358,15 @@ pdc-template/
 | `CORS_ORIGIN` | Yes | Comma-separated allowed origins |
 | `AI_EMBED_MODEL` | No | Embedding model (default: `@cf/baai/bge-base-en-v1.5`) |
 | `ENABLE_DEMO_TOOLS` | No | Set `"true"` to enable `/admin/seed` and `/leads/simulate` |
+| `SUPER_ADMIN_EMAIL` | Yes | Email of permanent super admin (cannot be removed) |
+| `RESEND_FROM_EMAIL` | Yes | Verified sender address in Resend |
+| `APP_URL` | Yes | Deployed Next.js URL (used to build magic link URLs) |
 
 ### Worker secrets (`wrangler secret put`)
 
 | Secret | Required | Description |
 |---|---|---|
+| `RESEND_API_KEY` | Yes | Resend API key for sending magic link emails |
 | `TWILIO_ACCOUNT_SID` | Yes (SMS) | Twilio account SID |
 | `TWILIO_AUTH_TOKEN` | Yes (SMS) | Twilio auth token |
 | `TWILIO_MESSAGING_SERVICE_SID` | Yes (SMS) | Messaging service SID |

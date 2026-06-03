@@ -25,6 +25,17 @@ AI_EMBED_MODEL = "@cf/baai/bge-base-en-v1.5"
 # Set to "true" to enable /admin/seed and /leads/simulate (demo/dev only)
 ENABLE_DEMO_TOOLS = "false"
 
+# TODO: email of the permanent super admin (cannot be removed via API)
+SUPER_ADMIN_EMAIL = "justphiof@gmail.com"
+
+# TODO: verified sender address in Resend (domain must be verified at resend.com)
+RESEND_FROM_EMAIL = "CHANGE_ME"
+
+# TODO: deployed Next.js app URL — used to build the magic link click-through URL
+APP_URL = "CHANGE_ME"
+
+# RESEND_API_KEY is a secret — never put it here. Set with: wrangler secret put RESEND_API_KEY
+
 [ai]
 binding = "AI"
 
