@@ -1,0 +1,20 @@
+{
+  "name": "pdc-template",
+  "private": true,
+  "scripts": {
+    "dev": "turbo dev --filter=@lead-intake/web",
+    "dev:worker": "turbo dev --filter=@lead-intake/api",
+    "build": "turbo build",
+    "db:migrate:local": "pnpm --filter @lead-intake/api db:migrate:local",
+    "db:migrate:remote": "pnpm --filter @lead-intake/api db:migrate:remote",
+    "db:seed:local": "pnpm --filter @lead-intake/api db:seed:local",
+    "db:seed:remote": "pnpm --filter @lead-intake/api db:seed:remote",
+    "deploy:remote": "bash scripts/deploy-remote.sh",
+    "setup:remote": "pnpm install && pnpm deploy:remote && pnpm build"
+  },
+  "devDependencies": {
+    "turbo": "^2.5.4",
+    "typescript": "^5.8.3"
+  },
+  "packageManager": "pnpm@10.15.0"
+}

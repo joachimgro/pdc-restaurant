@@ -1,0 +1,19 @@
+TELNYX_API_KEY=
+CORS_ORIGIN=http://localhost:3000
+
+# AI_DISABLED=true   # use template stub instead of Workers AI
+# AI_EMBED_MODEL=@cf/baai/bge-base-en-v1.5
+
+# Twilio — set via: wrangler secret put TWILIO_AUTH_TOKEN (etc.)
+TWILIO_ACCOUNT_SID=ACxxxxxxxx
+TWILIO_AUTH_TOKEN=
+# Or API key pair (leave TWILIO_AUTH_TOKEN empty):
+# TWILIO_API_KEY_SID=SKxxxxxxxx
+# TWILIO_API_KEY_SECRET=
+TWILIO_MESSAGING_SERVICE_SID=MGxxxxxxxx
+# TWILIO_SEND_OUTBOUND=false
+# Or use a single From number instead of Messaging Service:
+# TWILIO_FROM_NUMBER=+15005550006
+
+# Local testing only — never in production
+# TWILIO_SKIP_SIGNATURE_VALIDATION=true

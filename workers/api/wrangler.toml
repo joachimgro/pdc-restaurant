@@ -1,0 +1,56 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# PDC Worker — fill in every value marked TODO before first deploy.
+# Naming convention: pdc-{client-slug}-*
+# Example: client slug "acme" → pdc-acme (worker), pdc-acme-db (D1),
+#          pdc-acme-knowledge (Vectorize), pdc-acme-queue (Queue)
+# ─────────────────────────────────────────────────────────────────────────────
+
+# TODO: set to pdc-{client-slug}  (e.g. "pdc-acme")
+name = "pdc-CHANGE_ME"
+main = "src/index.ts"
+compatibility_date = "2025-06-01"
+
+# TODO: your Cloudflare account ID (found at dash.cloudflare.com → right sidebar)
+account_id = "CHANGE_ME"
+
+[vars]
+# TODO: set to a unique slug for this client  (e.g. "acme" or "acme-bjj")
+ORGANIZATION_ID = "CHANGE_ME"
+
+# TODO: update once you know the web app URL (keep localhost for local dev)
+CORS_ORIGIN = "http://localhost:3000,http://127.0.0.1:3000"
+
+AI_EMBED_MODEL = "@cf/baai/bge-base-en-v1.5"
+
+# Set to "true" to enable /admin/seed and /leads/simulate (demo/dev only)
+ENABLE_DEMO_TOOLS = "false"
+
+[ai]
+binding = "AI"
+
+[[vectorize]]
+binding = "KNOWLEDGE"
+# TODO: set to pdc-{client-slug}-knowledge  (create with: wrangler vectorize create pdc-{slug}-knowledge --dimensions=768 --metric=cosine)
+index_name = "pdc-CHANGE_ME-knowledge"
+
+[[d1_databases]]
+binding = "DB"
+# TODO: set to pdc-{client-slug}-db  (create with: wrangler d1 create pdc-{slug}-db)
+database_name = "pdc-CHANGE_ME-db"
+# TODO: paste the database_id returned by the create command above
+database_id = "CHANGE_ME"
+migrations_dir = "migrations"
+
+[[queues.producers]]
+binding = "AI_QUEUE"
+# TODO: set to pdc-{client-slug}-queue  (create with: wrangler queues create pdc-{slug}-queue)
+queue = "pdc-CHANGE_ME-queue"
+
+[[queues.consumers]]
+# TODO: must match the queue name above
+queue = "pdc-CHANGE_ME-queue"
+max_batch_size = 1
+max_batch_timeout = 5
+
+[dev]
+port = 8787

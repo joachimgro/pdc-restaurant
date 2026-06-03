@@ -1,0 +1,27 @@
+{
+  "name": "@lead-intake/api",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "db:migrate:local": "wrangler d1 migrations apply $(grep 'database_name' wrangler.toml | head -1 | sed 's/.*database_name = \"\\(.*\\)\"/\\1/') --local",
+    "db:migrate:remote": "wrangler d1 migrations apply $(grep 'database_name' wrangler.toml | head -1 | sed 's/.*database_name = \"\\(.*\\)\"/\\1/') --remote",
+    "db:seed:local": "curl -s -X POST http://localhost:8787/admin/seed",
+    "db:seed:remote": "node scripts/seed-remote.mjs",
+    "knowledge:ingest:remote": "node scripts/ingest-knowledge.mjs",
+    "vectorize:create": "wrangler vectorize create $(grep 'index_name' wrangler.toml | head -1 | sed 's/.*index_name = \"\\(.*\\)\"/\\1/') --dimensions=768 --metric=cosine"
+  },
+  "dependencies": {
+    "@lead-intake/knowledge": "workspace:*",
+    "@lead-intake/seed-data": "workspace:*",
+    "@lead-intake/shared-types": "workspace:*",
+    "zod": "^3.25.67"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250620.0",
+    "typescript": "^5.8.3",
+    "wrangler": "^4.20.0"
+  }
+}
