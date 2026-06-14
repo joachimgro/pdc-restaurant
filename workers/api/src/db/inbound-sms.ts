@@ -11,6 +11,7 @@ import {
   deleteWebhookDelivery,
   recordWebhookDelivery,
 } from "./webhook-deliveries";
+import { logger } from "../log";
 import type { Env } from "../env";
 import { canonicalPhone, phoneDigitSuffix } from "./phone-utils";
 
@@ -48,9 +49,9 @@ export async function processInboundSms(
       locationId = defaultLocation.id;
       locationConfirmed = false;
     } else {
-      console.warn(
-        `Inbound SMS from ${phone} — no locations configured for org ${env.ORGANIZATION_ID}. Lead created without location.`
-      );
+      logger.warn(env, "Inbound message — no locations configured; lead created without location", {
+        phone,
+      });
     }
   }
 
@@ -71,9 +72,10 @@ export async function processInboundSms(
   );
 
   if (isDuplicate) {
-    console.warn(
-      `[${env.ORGANIZATION_ID}] Duplicate webhook ${input.provider}:${input.externalId} — skipping`
-    );
+    logger.warn(env, "Duplicate webhook delivery — skipping", {
+      provider: input.provider,
+      externalId: input.externalId,
+    });
     const existing = await env.DB.prepare(
       `SELECT id FROM leads WHERE phone = ? AND organization_id = ?`
     )
@@ -234,9 +236,10 @@ export async function processInboundSms(
 
   if (winner && winner.id !== leadId) {
     // Another request already created this lead — treat as existing.
-    console.warn(
-      `Inbound SMS race: lead already exists for ${phone} in org ${env.ORGANIZATION_ID}. Routing to existing lead ${winner.id}.`
-    );
+    logger.warn(env, "Inbound lead creation race — routing to existing lead", {
+      phone,
+      existingLeadId: winner.id,
+    });
     const sortOrder = await nextMessageSortOrder(env.DB, winner.id);
     const msgTime = nowTimeLabel();
     const chat = buildMessageStatements(env.DB, winner.id, sortOrder, {

@@ -1,5 +1,7 @@
 import { handleQueueBatch } from "./queue/consumer";
 import { optionsResponse, jsonResponse } from "./cors";
+import { verifySchemaVersion } from "./meta";
+import { handleHealth } from "./routes/health";
 import { handleAdminSeed } from "./routes/admin";
 import { handleListLeads, handleGetLead, handleSelectLead, handleTakeover, handleResumeAi, handleSimulateNewLead, handleDeleteLead, handleSendStaffMessage, handleAddLeadNote } from "./routes/leads";
 import { handleEventStream } from "./routes/events";
@@ -43,13 +45,29 @@ export default {
       );
     }
 
+    // /health must work even when schema check fails (diagnostics)
+    if (path === "/health") {
+      return handleHealth(request, env);
+    }
+
+    try {
+      await verifySchemaVersion(env);
+    } catch (e) {
+      return new Response(
+        JSON.stringify({
+          error: "Service unavailable: schema mismatch",
+          details: String(e),
+        }),
+        { status: 503, headers: { "Content-Type": "application/json" } }
+      );
+    }
+
     try {
       // ── Public (unauthenticated) endpoints ──────────────────────────────
       // Everything else requires a valid staff session cookie. /auth/* routes
       // are listed as public because they manage their own session checks
       // internally (and magic-link/verify must be reachable while logged out).
       const isPublic =
-        path === "/health" ||
         (path === "/leads/intake" && request.method === "POST") ||
         path.startsWith("/auth/") ||
         path.startsWith("/webhooks/");
@@ -59,10 +77,6 @@ export default {
         if (!session) {
           return jsonResponse(request, env, { error: "Unauthorized" }, 401);
         }
-      }
-
-      if (path === "/health") {
-        return jsonResponse(request, env, { ok: true });
       }
 
       if (path === "/admin/seed" && request.method === "POST") {

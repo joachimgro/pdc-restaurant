@@ -158,3 +158,18 @@ After deploy and `pnpm db:migrate:remote`, an operator must complete these Admin
 
 Without steps 1–3, the system degrades gracefully (warnings in logs, generic AI behaviour) but is
 not production-ready.
+
+---
+
+## Phase 0 follow-up — migration `0008` FK fix
+
+### `workers/api/migrations/0008_fix_location_overrides.sql`
+- **Removed** `INSERT OR REPLACE INTO ai_location_overrides` rows for hardcoded slugs
+  (`manchester`, `leeds`, `bolton`, `stockport`).
+- **Why:** Fresh client D1 databases have no `locations` rows at migration time, so these INSERTs
+  failed with `FOREIGN KEY constraint failed` and halted the entire migration chain. This was a
+  Phase 0 violation — client-specific location copy in a committed migration.
+- **Now:** No-op with comment; `ai_location_overrides` DDL remains in `0002_ai_knowledge.sql`;
+  per-location context is configured per client via Admin / application code.
+- **Note:** Databases that already applied the old `0008` are unchanged (migration not re-run).
+  See `PHASE_0_FOLLOWUP.md` for a full audit of other migration INSERTs.

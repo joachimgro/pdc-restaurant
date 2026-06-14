@@ -71,5 +71,11 @@ max_retries = 3
 # TODO: set to pdc-{client-slug}-dlq
 dead_letter_queue = "pdc-CHANGE_ME-dlq"
 
+[[kv_namespaces]]
+binding = "RATE_LIMITS"
+# Create with: wrangler kv namespace create RATE_LIMITS
+# Paste the returned id below (required for AI rate limiting; optional until configured)
+id = "CHANGE_ME"
+
 [dev]
 port = 8787

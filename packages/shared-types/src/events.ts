@@ -7,6 +7,7 @@ export const DomainEventTypeSchema = z.enum([
   "lead.ai_failed",
   "lead.ai_aborted",
   "lead.sync_failure",
+  "lead.ai_rate_limited",
   "message.created",
   "typing.started",
   "typing.stopped",
@@ -73,12 +74,22 @@ export const LeadSyncFailureEventSchema = baseEvent.extend({
   }),
 });
 
+export const LeadAiRateLimitedEventSchema = baseEvent.extend({
+  type: z.literal("lead.ai_rate_limited"),
+  payload: z.object({
+    leadId: z.string(),
+    count: z.number(),
+    reason: z.string().optional(),
+  }),
+});
+
 export const DomainEventSchema = z.discriminatedUnion("type", [
   LeadCreatedEventSchema,
   LeadUpdatedEventSchema,
   LeadAiFailedEventSchema,
   LeadAiAbortedEventSchema,
   LeadSyncFailureEventSchema,
+  LeadAiRateLimitedEventSchema,
   MessageCreatedEventSchema,
   TypingStartedEventSchema,
   TypingStoppedEventSchema,

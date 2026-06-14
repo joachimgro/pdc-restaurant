@@ -33,6 +33,16 @@ pnpm exec wrangler vectorize create "$VECTORIZE_INDEX" --dimensions=768 --metric
 echo "==> Ensuring dead-letter queue exists: $DLQ_NAME..."
 pnpm exec wrangler queues create "$DLQ_NAME" 2>/dev/null || true
 
+echo "==> Ensuring KV namespace RATE_LIMITS exists (for AI rate limiting)..."
+KV_OUTPUT=$(pnpm exec wrangler kv namespace create RATE_LIMITS 2>&1) || true
+echo "$KV_OUTPUT"
+if echo "$KV_OUTPUT" | grep -q "id = "; then
+  echo "    Paste the KV namespace id into workers/api/wrangler.toml (RATE_LIMITS binding) if still CHANGE_ME"
+fi
+
+echo "==> Generating build-info.ts..."
+pnpm run gen-build-info
+
 echo "==> Deploying Worker..."
 DEPLOY_OUTPUT=$(pnpm exec wrangler deploy 2>&1)
 echo "$DEPLOY_OUTPUT"
@@ -46,8 +56,12 @@ if [ -z "$API_URL" ]; then
 fi
 
 echo "==> Health check..."
-curl -s "$API_URL/health" | head -c 200
+HEALTH=$(curl -s "$API_URL/health")
+echo "$HEALTH" | head -c 500
 echo ""
+if echo "$HEALTH" | grep -q '"ok":false'; then
+  echo "    ⚠️  Health check reported failures — inspect checks.schema and other fields above"
+fi
 
 echo "==> Ingesting knowledge into Vectorize..."
 INGEST_RESULT=$(curl -s -X POST "$API_URL/admin/ingest-knowledge" \

@@ -1,6 +1,7 @@
 import { jsonResponse } from "../cors";
 import { processInboundSms, queueInboundAi } from "../db/inbound-sms";
 import { verifyTelnyxWebhook } from "../auth/telnyx-verify";
+import { logger } from "../log";
 import type { Env } from "../env";
 
 interface TelnyxPayload {
@@ -22,18 +23,15 @@ export async function handleTelnyxWebhook(
 ): Promise<Response> {
   // ── Signature verification — mandatory ───────────────────────────────────
   if (!env.TELNYX_WEBHOOK_PUBLIC_KEY) {
-    console.error(
-      `[${env.ORGANIZATION_ID}] TELNYX_WEBHOOK_PUBLIC_KEY not set — rejecting webhook. ` +
-        "Set the secret: wrangler secret put TELNYX_WEBHOOK_PUBLIC_KEY"
-    );
+    logger.error(env, "TELNYX_WEBHOOK_PUBLIC_KEY not set — rejecting webhook", {
+      hint: "wrangler secret put TELNYX_WEBHOOK_PUBLIC_KEY",
+    });
     return new Response("Webhook verification not configured", { status: 500 });
   }
 
   const valid = await verifyTelnyxWebhook(request, env.TELNYX_WEBHOOK_PUBLIC_KEY);
   if (!valid) {
-    console.warn(
-      `[${env.ORGANIZATION_ID}] Telnyx webhook signature invalid — rejecting`
-    );
+    logger.warn(env, "Telnyx webhook signature invalid — rejecting");
     return new Response("Invalid signature", { status: 403 });
   }
 

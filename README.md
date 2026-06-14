@@ -43,7 +43,8 @@ git fetch upstream
 
 ### 2 — Create Cloudflare resources
 
-You need four resources in the client's Cloudflare account. Run these with `wrangler` (you must
+You need **five** resources in the client's Cloudflare account (plus Workers AI,
+which uses a binding only). Run these with `wrangler` (you must
 be authenticated: `wrangler login`).
 
 #### D1 database
@@ -65,6 +66,27 @@ wrangler vectorize create pdc-{client-slug}-knowledge --dimensions=768 --metric=
 ```bash
 wrangler queues create pdc-{client-slug}-queue
 ```
+
+#### Dead-letter queue (DLQ)
+
+Failed AI queue messages land here instead of being dropped silently (see Phase 1):
+
+```bash
+wrangler queues create pdc-{client-slug}-dlq
+```
+
+Configure `dead_letter_queue` in `workers/api/wrangler.toml` to match.
+
+#### KV namespace (AI rate limiting)
+
+Per-org AI call counters and circuit breaker (optional until configured; rate limiting
+is disabled if the binding is absent):
+
+```bash
+wrangler kv namespace create RATE_LIMITS
+```
+
+Copy the returned `id` into `workers/api/wrangler.toml` under `[[kv_namespaces]]`.
 
 #### Workers AI
 
@@ -96,6 +118,12 @@ queue = "pdc-{client-slug}-queue"
 
 [[queues.consumers]]
 queue = "pdc-{client-slug}-queue"
+max_retries = 3
+dead_letter_queue = "pdc-{client-slug}-dlq"
+
+[[kv_namespaces]]
+binding = "RATE_LIMITS"
+id = "..."                    # ← from: wrangler kv namespace create RATE_LIMITS
 ```
 
 > `ENABLE_DEMO_TOOLS` defaults to `"false"`. Set to `"true"` only for demo/dev instances
@@ -376,6 +404,21 @@ To add a feature to a client repo:
 ```bash
 git fetch upstream
 git merge upstream/feat/booking
+```
+
+**After merging a feature branch**, read `FEATURE_REQUIREMENTS.md` on that branch
+for the minimum `schema_version` and any new migrations. Then always run:
+
+```bash
+pnpm deploy:remote
+```
+
+This applies D1 migrations **before** deploying Worker code. If you deploy Worker
+code without migrating first, the schema gate (`EXPECTED_SCHEMA_VERSION` in
+`workers/api/src/meta.ts`) returns HTTP 503 until D1 catches up. Verify with:
+
+```bash
+curl https://pdc-{client-slug}.workers.dev/health
 ```
 
 Bug fixes to a feature branch are pulled the same way. Feature branches never touch

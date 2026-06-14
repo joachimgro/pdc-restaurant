@@ -32,6 +32,8 @@ export interface Env {
   AUTH_FROM_EMAIL?: string;
   /** Web app origin for post-login redirect (defaults to first CORS_ORIGIN) */
   AUTH_WEB_ORIGIN?: string;
+  /** Optional KV namespace for per-org AI rate limiting (Phase 4) */
+  RATE_LIMITS?: KVNamespace;
 }
 
 export type QueueMessage =

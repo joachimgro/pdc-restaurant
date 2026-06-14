@@ -286,6 +286,7 @@ export const useInboxStore = create<InboxState>((set, get) => ({
       event.type === "lead.ai_failed" ||
       event.type === "lead.ai_aborted" ||
       event.type === "lead.sync_failure" ||
+      event.type === "lead.ai_rate_limited" ||
       event.type === "message.created"
     ) {
       void get().refreshLead(event.payload.leadId);

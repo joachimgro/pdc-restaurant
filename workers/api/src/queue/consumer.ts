@@ -14,8 +14,10 @@ import {
 import { ragEnabled, retrieveKnowledge, buildRagQuery } from "../ai/rag";
 import { loadScheduleForLead } from "../schedule-runtime";
 import { generateAiReply } from "../ai/pipeline";
+import { checkAiRateLimit, recordAiCall } from "../ai/rate-limit";
 import type { Lead } from "@lead-intake/shared-types";
 import { sendTwilioSms, twilioConfigured } from "../twilio/send";
+import { logger } from "../log";
 import type { Env, QueueMessage } from "../env";
 
 const MAX_ATTEMPTS = 3;
@@ -144,10 +146,11 @@ async function recordPermanentFailure(
       },
     });
   } catch (inner) {
-    console.error(
-      `[${env.ORGANIZATION_ID}] Could not record AI failure for lead ${leadId}:`,
-      inner
-    );
+    logger.error(env, "Could not record AI failure for lead", {
+      error: String(inner),
+      leadId,
+      queueMessageId: queueMsgId,
+    });
   }
 }
 
@@ -314,7 +317,11 @@ async function processSimulateReply(
       await sendTwilioSms(env, updated.phone!, smsBody);
     } catch (e) {
       // Send failed: do NOT persist an undelivered AI message. Recoverable.
-      console.error("Failed to send Twilio SMS", e);
+      logger.error(env, "Failed to send Twilio SMS", {
+        error: String(e),
+        leadId,
+        queueMessageId: queueMsgId,
+      });
       return;
     }
   }
@@ -327,10 +334,12 @@ async function processSimulateReply(
     await env.DB.batch(groupB);
   } catch (e) {
     if (willSend) {
-      console.error(
-        `[${env.ORGANIZATION_ID}] CRITICAL: AI reply SENT to lead ${leadId} but D1 write failed. Manual reconciliation needed.`,
-        e
-      );
+      logger.error(env, "CRITICAL: AI reply SENT but D1 write failed", {
+        error: String(e),
+        leadId,
+        queueMessageId: queueMsgId,
+        phase: "post_send_write",
+      });
       await insertDomainEvent(env.DB, env.ORGANIZATION_ID, {
         type: "lead.sync_failure",
         payload: { leadId, error: String(e), phase: "post_send_write" },
@@ -391,6 +400,42 @@ export async function handleQueueBatch(
     }
 
     try {
+      if (leadId) {
+        const rateCheck = await checkAiRateLimit(env);
+        if (!rateCheck.allowed) {
+          logger.error(env, "AI rate limit exceeded", {
+            leadId,
+            count: rateCheck.count,
+            reason: rateCheck.reason,
+            queueMessageId: msg.id,
+          });
+
+          await env.DB.prepare(
+            "UPDATE leads SET assessment = ? WHERE id = ? AND organization_id = ?"
+          )
+            .bind(
+              "⚠️ AI rate limit reached — needs manual response",
+              leadId,
+              env.ORGANIZATION_ID
+            )
+            .run();
+
+          await insertDomainEvent(env.DB, env.ORGANIZATION_ID, {
+            type: "lead.ai_rate_limited",
+            payload: {
+              leadId,
+              count: rateCheck.count,
+              reason: rateCheck.reason,
+            },
+          });
+
+          msg.ack();
+          continue;
+        }
+
+        await recordAiCall(env);
+      }
+
       if (body.type === "process_inbound") {
         await processInbound(env, body.leadId, body.messageId, msg.id);
       } else if (body.type === "simulate_ai_reply") {
@@ -399,10 +444,12 @@ export async function handleQueueBatch(
       msg.ack();
     } catch (e) {
       if (attempts >= MAX_ATTEMPTS) {
-        console.error(
-          `[${env.ORGANIZATION_ID}] PERMANENT AI FAILURE — lead ${leadId}, ${attempts} attempts:`,
-          e
-        );
+        logger.error(env, "PERMANENT AI FAILURE", {
+          error: String(e),
+          leadId,
+          attempts,
+          queueMessageId: msg.id,
+        });
 
         if (leadId) {
           await recordPermanentFailure(env, leadId, attempts, e, msg.id);

@@ -1,4 +1,5 @@
 import { processInboundSms, queueInboundAi } from "../db/inbound-sms";
+import { logger } from "../log";
 import type { Env } from "../env";
 import {
   parseTwilioForm,
@@ -24,12 +25,9 @@ async function readAndVerifyTwilio(
       `[${env.ORGANIZATION_ID}] Twilio signature validation skipped (TWILIO_SKIP_SIGNATURE_VALIDATION=true). Never use in production.`
     );
   } else if (!env.TWILIO_AUTH_TOKEN) {
-    // No token and no skip flag — reject to prevent unauthenticated pass-through.
-    // In local dev, set TWILIO_SKIP_SIGNATURE_VALIDATION=true in .dev.vars.
-    console.error(
-      `[${env.ORGANIZATION_ID}] TWILIO_AUTH_TOKEN not set — rejecting webhook. ` +
-        "Set the secret (wrangler secret put TWILIO_AUTH_TOKEN) or use TWILIO_SKIP_SIGNATURE_VALIDATION=true for local dev."
-    );
+    logger.error(env, "TWILIO_AUTH_TOKEN not set — rejecting webhook", {
+      hint: "Set wrangler secret put TWILIO_AUTH_TOKEN or TWILIO_SKIP_SIGNATURE_VALIDATION=true for local dev",
+    });
     return new Response("Webhook verification not configured", { status: 500 });
   } else {
     const url = new URL(request.url);
@@ -43,9 +41,7 @@ async function readAndVerifyTwilio(
     );
 
     if (!valid) {
-      console.error(
-        `[${env.ORGANIZATION_ID}] Invalid Twilio signature`, validationUrl
-      );
+      logger.error(env, "Invalid Twilio signature", { validationUrl });
       return new Response("Forbidden", { status: 403 });
     }
   }

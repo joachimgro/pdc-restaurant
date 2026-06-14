@@ -5,7 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "wrangler dev",
-    "deploy": "wrangler deploy",
+    "gen-build-info": "node scripts/gen-build-info.mjs",
+    "predeploy": "pnpm run gen-build-info",
+    "deploy": "pnpm run predeploy && wrangler deploy",
     "db:migrate:local": "wrangler d1 migrations apply $(grep 'database_name' wrangler.toml | head -1 | sed 's/.*database_name = \"\\(.*\\)\"/\\1/') --local",
     "db:migrate:remote": "wrangler d1 migrations apply $(grep 'database_name' wrangler.toml | head -1 | sed 's/.*database_name = \"\\(.*\\)\"/\\1/') --remote",
     "db:seed:local": "curl -s -X POST http://localhost:8787/admin/seed",
