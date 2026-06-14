@@ -14,11 +14,11 @@ CREATE TABLE IF NOT EXISTS location_programme_schedules (
 CREATE INDEX IF NOT EXISTS idx_schedules_location
   ON location_programme_schedules(location_id, programme);
 
--- TODO: add client schedule rows here after creating locations.
+-- TODO: add client schedule rows here after creating locations, or manage them
+-- via the Admin panel -> Locations -> Schedules.
 -- Format: (id, organization_id, location_id, programme, day_of_week, start_time, display_label, sort_order)
 -- Example:
 -- INSERT OR IGNORE INTO location_programme_schedules
 --   (id, organization_id, location_id, programme, day_of_week, start_time, display_label, sort_order)
 -- VALUES
---   ('sched-main-bjj-mon-1900', 'CHANGE_ME', 'main', 'Adults BJJ', 'mon', '19:00', '7pm', 0),
---   ('sched-main-bjj-wed-1900', 'CHANGE_ME', 'main', 'Adults BJJ', 'wed', '19:00', '7pm', 1);
+--   ('sched-main-bjj-mon-1900', 'CHANGE_ME', 'main', 'Adults BJJ', 'mon', '19:00', '7pm', 0);

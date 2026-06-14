@@ -4,7 +4,9 @@
  */
 const base = process.env.WORKER_URL || process.env.NEXT_PUBLIC_API_URL;
 if (!base) {
-  console.error("Set WORKER_URL in .env before running this script");
+  console.error(
+    "Set WORKER_URL (or NEXT_PUBLIC_API_URL) to your deployed Worker URL, e.g. https://pdc-acme.<subdomain>.workers.dev"
+  );
   process.exit(1);
 }
 

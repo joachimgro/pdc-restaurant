@@ -4,11 +4,14 @@ CORS_ORIGIN=http://localhost:3000
 # AI_DISABLED=true   # use template stub instead of Workers AI
 # AI_EMBED_MODEL=@cf/baai/bge-base-en-v1.5
 
-# Auth / Resend — for local dev, leave RESEND_API_KEY blank to print magic links to console
+# Staff auth / Resend — for local dev, leave RESEND_API_KEY blank and the magic-link
+# verify URL is printed to the console (and returned as devVerifyUrl on localhost).
 # RESEND_API_KEY=
-# RESEND_FROM_EMAIL=noreply@yourdomain.com
-# APP_URL=http://localhost:3000    # where to send users after clicking the magic link
-# SUPER_ADMIN_EMAIL=you@example.com
+# AUTH_FROM_EMAIL=noreply@yourdomain.com    # verified Resend sender
+# AUTH_WEB_ORIGIN=http://localhost:3000     # post-login redirect target (defaults to first CORS_ORIGIN)
+
+# Enable demo tools locally (seed/reset/simulate)
+# ENABLE_DEMO_TOOLS=true
 
 # Twilio — set via: wrangler secret put TWILIO_AUTH_TOKEN (etc.)
 TWILIO_ACCOUNT_SID=ACxxxxxxxx

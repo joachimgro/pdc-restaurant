@@ -10,12 +10,10 @@ export interface AiConfigRow {
   model_judge: string;
 }
 
-// Fallback config used if no ai_config row exists in DB.
-// Configure the real values via Admin panel → AI Config, or via migration seed.
 const DEFAULT_CONFIG: Omit<AiConfigRow, "organization_id"> = {
   academy_name: "TODO: Set academy name in Admin → AI Config",
   tone:
-    "Sound like a real person at the desk — warm, upbeat, human. Use contractions. Never robotic.",
+    "Sound like a real person at the desk — warm, upbeat, human. British English. Contractions welcome. Never robotic.",
   goals:
     "Be helpful every message. Answer what they asked, then advance toward a free trial or booking. Never repeat the same opener or re-ask answered questions.",
   rules:

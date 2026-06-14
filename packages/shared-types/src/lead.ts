@@ -47,6 +47,15 @@ export const TimelineEventSchema = z.object({
 });
 export type TimelineEvent = z.infer<typeof TimelineEventSchema>;
 
+export const LeadNoteSchema = z.object({
+  id: z.string(),
+  body: z.string(),
+  authorName: z.string(),
+  createdAt: z.string(),
+  authorUserId: z.string().optional(),
+});
+export type LeadNote = z.infer<typeof LeadNoteSchema>;
+
 export const DayLabelMessageSchema = z.object({
   kind: z.literal("day"),
   day: z.string(),
@@ -64,6 +73,8 @@ export const ChatMessageSchema = z.object({
   text: z.string(),
   time: z.string(),
   reasoning: ReasoningSchema.optional(),
+  staffAuthorName: z.string().optional(),
+  staffUserId: z.string().optional(),
 });
 
 export const MessageSchema = z.discriminatedUnion("kind", [
@@ -92,8 +103,10 @@ export const LeadSchema = z.object({
   trialSlotLabel: z.string().optional(),
   trialProposed: TrialProposalSchema.optional(),
   trialConfirmedAt: z.string().optional(),
+  locationConfirmed: z.boolean().optional(),
   justArrived: z.boolean().optional(),
   aiPaused: z.boolean().optional(),
+  notes: z.array(LeadNoteSchema).default([]),
   messages: z.array(MessageSchema),
   timeline: z.array(TimelineEventSchema),
 });

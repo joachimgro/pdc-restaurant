@@ -1,7 +1,10 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
+import type { StaffUser } from "@lead-intake/shared-types";
+import { logoutAuth } from "@/lib/api/client";
 import { IconBook, IconSearch, IconSettings } from "./icons";
 import { AdminPanel } from "./AdminPanel";
 import { KnowledgePanel } from "./KnowledgePanel";
@@ -13,10 +16,16 @@ const LOCATIONS = [
   { id: "stockport", abbrev: "S", badge: 1 },
 ];
 
-export function LocationRail() {
+export function LocationRail({ staffUser }: { staffUser: StaffUser | null }) {
+  const router = useRouter();
   const [active, setActive] = useState("manchester");
   const [adminOpen, setAdminOpen] = useState(false);
   const [knowledgeOpen, setKnowledgeOpen] = useState(false);
+
+  async function handleLogout() {
+    await logoutAuth();
+    router.replace("/login");
+  }
 
   return (
     <>
@@ -36,6 +45,21 @@ export function LocationRail() {
           </button>
         ))}
         <div className="rail-bottom">
+          {staffUser && (
+            <button
+              type="button"
+              className="rail-staff-btn"
+              title={`Signed in as ${staffUser.name}`}
+              onClick={() => void handleLogout()}
+            >
+              {staffUser.name
+                .split(" ")
+                .map((p) => p[0])
+                .join("")
+                .slice(0, 2)
+                .toUpperCase()}
+            </button>
+          )}
           <div className="rail-icon" title="Search">
             <IconSearch />
           </div>
@@ -68,7 +92,11 @@ export function LocationRail() {
         open={knowledgeOpen}
         onClose={() => setKnowledgeOpen(false)}
       />
-      <AdminPanel open={adminOpen} onClose={() => setAdminOpen(false)} />
+      <AdminPanel
+        open={adminOpen}
+        onClose={() => setAdminOpen(false)}
+        staffUser={staffUser}
+      />
     </>
   );
 }

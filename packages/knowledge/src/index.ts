@@ -20,8 +20,7 @@ export interface KnowledgeChunk {
  * 5. After populating, run: curl -X POST {WORKER_URL}/admin/ingest-knowledge
  *    or use the Admin panel → "Re-ingest Knowledge".
  *
- * TIP: Write knowledge in the docs/ folder first as plain markdown,
- * then convert to chunks here. See docs/knowledge-template.md for guidance.
+ * See docs/knowledge-guide.md for detailed guidance and chunk templates.
  */
 export const KNOWLEDGE_CHUNKS: KnowledgeChunk[] = [
   // TODO: add your client's knowledge chunks here.
@@ -34,13 +33,5 @@ export const KNOWLEDGE_CHUNKS: KnowledgeChunk[] = [
   //   title: "Free trial policy",
   //   source: "faq.md",
   //   text: "All new members can start with a free trial class ...",
-  // },
-  // {
-  //   id: "location-main",
-  //   organizationId: "CHANGE_ME",
-  //   locationId: "main",            // matches a location id in the DB
-  //   title: "Main location details",
-  //   source: "locations/main.md",
-  //   text: "Address, class times, parking, contact ...",
   // },
 ];

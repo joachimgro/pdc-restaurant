@@ -2,50 +2,89 @@ import {
   DomainEventSchema,
   LeadSchema,
   ListLeadsResponseSchema,
+  StaffTeamListSchema,
+  StaffTeamMemberSchema,
+  StaffUserSchema,
 } from "@lead-intake/shared-types";
-import type { DomainEvent, Lead } from "@lead-intake/shared-types";
-import { getSession, clearSession } from "@/lib/auth";
+import type { DomainEvent, Lead, StaffTeamMember, StaffUser } from "@lead-intake/shared-types";
 
 const API_URL =
   process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8787";
-
-/** Redirect to /login and clear the local session. */
-function handleUnauthorized(): void {
-  clearSession();
-  if (typeof window !== "undefined") {
-    window.location.href = "/login";
-  }
-}
 
 async function apiFetch<T>(
   path: string,
   init?: RequestInit
 ): Promise<T> {
-  const session = getSession();
-
   const res = await fetch(`${API_URL}${path}`, {
     cache: "no-store",
+    credentials: "include",
     ...init,
     headers: {
       "Content-Type": "application/json",
-      ...(session ? { Authorization: `Bearer ${session.token}` } : {}),
       ...init?.headers,
     },
   });
-
-  if (res.status === 401) {
-    handleUnauthorized();
-    throw new Error("Session expired. Redirecting to login…");
-  }
-
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error(
       (err as { error?: string }).error ?? `API error ${res.status}`
     );
   }
-
   return res.json() as Promise<T>;
+}
+
+export async function fetchAuthMe(): Promise<StaffUser | null> {
+  const res = await fetch(`${API_URL}/auth/me`, {
+    cache: "no-store",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+  });
+  if (res.status === 401) return null;
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(
+      (err as { error?: string }).error ?? `API error ${res.status}`
+    );
+  }
+  const data = (await res.json()) as { user: unknown };
+  return StaffUserSchema.parse(data.user);
+}
+
+export async function requestMagicLink(
+  email: string
+): Promise<{ devVerifyUrl?: string }> {
+  return apiFetch("/auth/magic-link", {
+    method: "POST",
+    body: JSON.stringify({ email }),
+  });
+}
+
+export async function logoutAuth(): Promise<void> {
+  await apiFetch("/auth/logout", { method: "POST" });
+}
+
+export async function updateStaffProfile(displayName: string): Promise<StaffUser> {
+  const data = await apiFetch<{ user: unknown }>("/auth/profile", {
+    method: "PATCH",
+    body: JSON.stringify({ displayName }),
+  });
+  return StaffUserSchema.parse(data.user);
+}
+
+export async function fetchTeamMembers(): Promise<StaffTeamMember[]> {
+  const data = await apiFetch<{ members: unknown }>("/auth/team");
+  return StaffTeamListSchema.parse(data).members;
+}
+
+export async function inviteTeamMember(
+  email: string,
+  role: "admin" | "member"
+): Promise<StaffTeamMember> {
+  const data = await apiFetch<{ member: unknown }>("/auth/team/invite", {
+    method: "POST",
+    body: JSON.stringify({ email, role }),
+  });
+  return StaffTeamMemberSchema.parse(data.member);
 }
 
 export async function fetchLeads() {
@@ -60,20 +99,11 @@ export async function fetchLead(id: string): Promise<Lead> {
 
 /** Returns null when the lead no longer exists (e.g. after delete). */
 export async function fetchLeadOrNull(id: string): Promise<Lead | null> {
-  const session = getSession();
-
   const res = await fetch(`${API_URL}/leads/${encodeURIComponent(id)}`, {
     cache: "no-store",
-    headers: {
-      "Content-Type": "application/json",
-      ...(session ? { Authorization: `Bearer ${session.token}` } : {}),
-    },
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
   });
-
-  if (res.status === 401) {
-    handleUnauthorized();
-    return null;
-  }
   if (res.status === 404) return null;
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
@@ -93,24 +123,15 @@ export async function selectLead(id: string): Promise<Lead> {
 
 /** Mark read and return lead; null if deleted. */
 export async function selectLeadOrNull(id: string): Promise<Lead | null> {
-  const session = getSession();
-
   const res = await fetch(
     `${API_URL}/leads/${encodeURIComponent(id)}/select`,
     {
       method: "POST",
       cache: "no-store",
-      headers: {
-        "Content-Type": "application/json",
-        ...(session ? { Authorization: `Bearer ${session.token}` } : {}),
-      },
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
     }
   );
-
-  if (res.status === 401) {
-    handleUnauthorized();
-    return null;
-  }
   if (res.status === 404) return null;
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
@@ -136,6 +157,13 @@ export async function takeoverLead(id: string): Promise<Lead> {
   return LeadSchema.parse(data);
 }
 
+export async function resumeAiLead(id: string): Promise<Lead> {
+  const data = await apiFetch<unknown>(`/leads/${id}/resume-ai`, {
+    method: "POST",
+  });
+  return LeadSchema.parse(data);
+}
+
 export async function seedApi(): Promise<{ seeded: boolean; count: number }> {
   return apiFetch("/admin/seed", { method: "POST" });
 }
@@ -144,21 +172,39 @@ export async function deleteLead(id: string): Promise<void> {
   await apiFetch(`/leads/${encodeURIComponent(id)}`, { method: "DELETE" });
 }
 
-/**
- * Subscribe to the SSE event stream.
- * The session token is passed as a query param because EventSource
- * does not support custom headers.
- */
+export async function sendStaffMessage(
+  id: string,
+  text: string
+): Promise<{ lead: Lead; smsSent: boolean }> {
+  const data = await apiFetch<{ lead: unknown; smsSent: boolean }>(
+    `/leads/${encodeURIComponent(id)}/messages`,
+    {
+      method: "POST",
+      body: JSON.stringify({ text }),
+    }
+  );
+  return { lead: LeadSchema.parse(data.lead), smsSent: data.smsSent };
+}
+
+export async function addLeadNote(id: string, body: string): Promise<Lead> {
+  const data = await apiFetch<unknown>(
+    `/leads/${encodeURIComponent(id)}/notes`,
+    {
+      method: "POST",
+      body: JSON.stringify({ body }),
+    }
+  );
+  return LeadSchema.parse(data);
+}
+
 export function subscribeEvents(
   onEvent: (event: DomainEvent) => void,
   cursor: string | null = null
 ): () => void {
-  const session = getSession();
   const url = new URL(`${API_URL}/events/stream`);
   if (cursor) url.searchParams.set("cursor", cursor);
-  if (session) url.searchParams.set("token", session.token);
 
-  const es = new EventSource(url.toString());
+  const es = new EventSource(url.toString(), { withCredentials: true });
 
   es.onmessage = (msg) => {
     try {

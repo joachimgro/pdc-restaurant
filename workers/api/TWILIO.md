@@ -4,10 +4,10 @@
 
 1. Twilio Console → Messaging → your **Messaging Service**
 2. **Integration → Incoming Messages** → **Send a webhook**
-   - URL: `https://lead-intake-api.justphiof.workers.dev/webhooks/twilio`
+   - URL: `https://pdc-{client-slug}.<your-subdomain>.workers.dev/webhooks/twilio`
    - HTTP POST
 3. **Delivery status callback** (optional)
-   - URL: `https://lead-intake-api.justphiof.workers.dev/webhooks/twilio/status`
+   - URL: `https://pdc-{client-slug}.<your-subdomain>.workers.dev/webhooks/twilio/status`
 
 Do **not** use “Receive the message” (API only) — that never calls your Worker.
 
@@ -44,7 +44,7 @@ wrangler secret put TWILIO_API_KEY_SECRET
 ### Verify without sending SMS
 
 ```bash
-curl -s https://lead-intake-api.justphiof.workers.dev/admin/twilio-check | jq
+curl -s https://pdc-{client-slug}.<your-subdomain>.workers.dev/admin/twilio-check | jq
 ```
 
 `ok: true` means Twilio accepts your credentials. `ok: false` with `hints` explains what to fix.

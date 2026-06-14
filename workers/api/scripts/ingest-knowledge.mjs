@@ -5,8 +5,9 @@
  */
 const API_URL = process.argv[2] ?? process.env.WORKER_URL;
 if (!API_URL) {
-  console.error("Usage: node scripts/ingest-knowledge.mjs <API_URL>");
-  console.error("  or set WORKER_URL in .env");
+  console.error(
+    "Usage: node scripts/ingest-knowledge.mjs <API_URL>  (or set WORKER_URL), e.g. https://pdc-acme.<subdomain>.workers.dev"
+  );
   process.exit(1);
 }
 

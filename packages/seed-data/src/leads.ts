@@ -1,5 +1,4 @@
 import type { Lead } from "@lead-intake/shared-types";
-import { toMessages, toTimeline } from "./parse";
 
 /**
  * LOCATIONS — used by seedDatabase() to populate the locations table.
@@ -21,11 +20,11 @@ export const LOCATIONS: readonly {
 ];
 
 /**
- * LEAD_GROUPS — controls display ordering in the inbox UI.
- * Keys: "today" | "yesterday" | "thisWeek"
- * Values: arrays of lead ids matching keys in rawLeads below.
+ * LEAD_GROUPS — controls display ordering of seeded demo leads in the inbox.
+ * Keys: "today" | "yesterday" | "thisWeek". Values: lead ids in rawLeads.
  *
- * Leave empty when ENABLE_DEMO_TOOLS is false (no seeded leads needed).
+ * Leave empty for production. Populate alongside rawLeads only for demo/dev
+ * instances (ENABLE_DEMO_TOOLS=true).
  */
 export const LEAD_GROUPS: {
   today: readonly string[];
@@ -38,51 +37,34 @@ export const LEAD_GROUPS: {
 };
 
 /**
- * Raw demo leads — only used when ENABLE_DEMO_TOOLS=true and /admin/seed is called.
- * Add demo leads here for sales demos or local development.
+ * Build seeded demo leads. Empty by default — only used when
+ * ENABLE_DEMO_TOOLS=true and /admin/seed is called.
  *
- * Each lead must have a matching entry in LEAD_GROUPS above.
+ * To add demo leads for a sales demo, return a Record<string, Lead> here
+ * with ids matching LEAD_GROUPS above.
  */
-const rawLeads: Record<string, Omit<Lead, "messages" | "timeline"> & {
-  rawMessages: Parameters<typeof toMessages>[0];
-  rawTimeline: Parameters<typeof toTimeline>[0];
-}> = {
-  // TODO (optional): add demo leads here for sales demos.
-  // Example:
-  //
-  // demo_lead_1: {
-  //   id: "demo_lead_1",
-  //   name: "Alex Smith",
-  //   phone: "+44 7700 900 001",
-  //   time: "5m",
-  //   location: "Main Gym",
-  //   locationId: "main",
-  //   status: "new" as const,
-  //   statusLabel: "New",
-  //   assessment: "First enquiry",
-  //   preview: "Hi, I'd like to know more about classes",
-  //   unread: true,
-  //   source: "Website",
-  //   interest: "Adults BJJ",
-  //   child: null,
-  //   rawMessages: [
-  //     { from: "lead", text: "Hi, I'd like to know more about classes", time: "5m" },
-  //   ],
-  //   rawTimeline: [
-  //     { time: "5m", parts: [{ text: "Lead created via website intake" }] },
-  //   ],
-  // },
-};
-
 export function buildSeedLeads(): Record<string, Lead> {
-  const result: Record<string, Lead> = {};
-  for (const [id, raw] of Object.entries(rawLeads)) {
-    const { rawMessages, rawTimeline, ...rest } = raw;
-    result[id] = {
-      ...rest,
-      messages: toMessages(rawMessages),
-      timeline: toTimeline(rawTimeline),
-    };
-  }
-  return result;
+  return {};
 }
+
+/**
+ * OLIVIA_SIMULATE — payload for the "simulate a new lead" demo tool
+ * (POST /leads/simulate, gated by ENABLE_DEMO_TOOLS). Generic placeholder;
+ * customise for live sales demos if desired.
+ */
+export const OLIVIA_SIMULATE = {
+  name: "Demo Lead",
+  phone: "+44 7700 900 000",
+  location: "Main",
+  locationId: "main",
+  source: "Website",
+  interest: "General enquiry",
+  inboundText: "Hi, I'd like to find out more about getting started.",
+  aiReply:
+    "Hi! Thanks for reaching out — happy to help you get started. What are you most interested in?",
+  reasoning: {
+    verdict: "Approved",
+    stage: "Discovery",
+    note: "Acknowledged the enquiry and asked a qualifying question to advance the conversation.",
+  },
+};

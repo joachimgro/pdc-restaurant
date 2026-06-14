@@ -99,6 +99,8 @@ function pickProgrammeFromRows(
     const pl = p.toLowerCase();
     let score = 0;
     if (pl === lower) score = 100;
+    else if (lower === "mma" && pl.includes("mma") && !pl.includes("muay")) score = 95;
+    else if (lower.includes("bjj") && pl.includes("bjj")) score = 95;
     else if (pl.includes(lower) || lower.includes(pl)) score = 50;
     if (lower.includes("mma") && pl.includes("mma")) score = 40;
     if (lower.includes("muay") && pl.includes("muay")) score = 40;

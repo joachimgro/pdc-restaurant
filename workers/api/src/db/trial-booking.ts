@@ -1,6 +1,9 @@
 import type { TrialProposal } from "@lead-intake/shared-types";
+import { resolveProgrammeLabel } from "../ai/programme-resolve";
+import { ensureLeadProgramme } from "../ai/qualification";
+import type { ProgrammeSchedule } from "./location-schedules";
 import { insertDomainEvent } from "./events";
-import { getLead, updateLeadFields } from "./leads";
+import { getLead, nowTimeLabel, updateLeadFields } from "./leads";
 import type { Env } from "../env";
 
 export async function proposeTrial(
@@ -34,14 +37,24 @@ export async function proposeTrial(
   });
 }
 
+type ConfirmTrialOpts = {
+  schedule?: ProgrammeSchedule | null;
+  history?: { role: string; text: string }[];
+};
+
 export async function confirmTrial(
   env: Env,
   leadId: string,
-  proposal: TrialProposal
+  proposal: TrialProposal,
+  opts?: ConfirmTrialOpts
 ): Promise<void> {
-  const lead = await getLead(env, leadId);
+  let lead = await getLead(env, leadId);
   if (!lead) return;
 
+  await ensureLeadProgramme(env, leadId, lead, opts);
+  lead = (await getLead(env, leadId)) ?? lead;
+
+  const programme = resolveProgrammeLabel(lead, opts);
   const assessment = `Trial booked — ${proposal.label}`;
   const preview = `Free trial · ${proposal.label} · ${lead.location}`;
   const now = new Date().toISOString();
@@ -59,16 +72,19 @@ export async function confirmTrial(
 
   await env.DB.prepare(
     `INSERT INTO timeline_events (id, lead_id, sort_order, time_label, parts_json)
-     VALUES (?, ?, (SELECT COALESCE(MAX(sort_order), -1) + 1 FROM timeline_events WHERE lead_id = ?), 'now', ?)`
+     VALUES (?, ?, (SELECT COALESCE(MAX(sort_order), -1) + 1 FROM timeline_events WHERE lead_id = ?), ?, ?)`
   )
     .bind(
       crypto.randomUUID(),
       leadId,
       leadId,
+      nowTimeLabel(),
       JSON.stringify([
         {
           bold: "Trial booked",
-          text: ` · ${proposal.label} · ${lead.interest}`,
+          text: programme
+            ? ` · ${proposal.label} · ${programme}`
+            : ` · ${proposal.label}`,
         },
       ])
     )

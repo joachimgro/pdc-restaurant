@@ -5,6 +5,7 @@ import {
   uniqueDaysFromSlots,
 } from "../db/location-schedules";
 import { displayFirstName } from "./intake-context";
+import { programmeForPhrase, resolveProgrammeLabel } from "./programme-resolve";
 import type { AiReply } from "./pipeline";
 
 const DAY_ALIASES: Record<string, string> = {
@@ -54,7 +55,9 @@ export function isExplicitConfirmation(text: string): boolean {
     /^(yes|yeah|yep|sure|ok|okay|please|book it|go ahead|sounds good|perfect|that works|do it|book me in|lock it in|let'?s do it)\b/.test(
       t
     ) ||
-    /\b(yes please|book that|pencil it in|that'?s fine|that works for me|works for me)\b/.test(t)
+    /\b(yes please|yes it would|it would|that would|book that|pencil it in|that'?s fine|that works for me|works for me)\b/.test(
+      t
+    )
   );
 }
 
@@ -231,18 +234,131 @@ export function extractPartialSelectionFromHistory(
   let day: string | null = null;
   let time: { startTime: string; displayLabel: string } | null = null;
 
-  const leadMsgs = [...history]
-    .filter((h) => h.role === "lead")
-    .slice(-4)
+  // Lead picks the day; AI often proposes the time — scan both.
+  const recent = [...history]
+    .filter((h) => h.role === "lead" || h.role === "ai")
+    .slice(-8)
     .reverse();
 
-  for (const msg of leadMsgs) {
+  for (const msg of recent) {
     if (!day) day = parseDayPreference(msg.text);
     if (!time) time = parseTimeFromSchedule(msg.text, schedule);
     if (day && time) break;
   }
 
   return { day, time };
+}
+
+/**
+ * When the lead replies yes/please after discussing a slot, resolve day+time from
+ * the full thread (including the AI's last proposal).
+ */
+export function resolveAffirmativeBookingChoice(
+  inboundText: string,
+  schedule: ProgrammeSchedule,
+  history: HistoryLine[]
+): TrialProposal | null {
+  if (!isAffirmativeBooking(inboundText)) return null;
+
+  const fromInbound = resolveScheduleChoice(inboundText, schedule, history);
+  if (fromInbound) return fromInbound;
+
+  const { day, time } = resolveDayAndTime(inboundText, schedule, history);
+  if (day && time && slotAvailableOnDay(schedule, day, time.startTime)) {
+    return buildProposal(schedule, day, time);
+  }
+
+  return null;
+}
+
+/** Parse common trial times without DB schedule rows (fallback for locations not seeded yet). */
+export function parseLooseTime(
+  text: string
+): { startTime: string; displayLabel: string } | null {
+  const t = text.toLowerCase();
+  if (/\b7[:\.]?30\s*(?:pm)?\b/i.test(t) || /\b730\s*pm\b/i.test(t)) {
+    return { startTime: "19:30", displayLabel: "7:30pm" };
+  }
+  if (/\b8[:\.]?30\s*(?:pm)?\b/i.test(t) || /\b830\s*pm\b/i.test(t)) {
+    return { startTime: "20:30", displayLabel: "8:30pm" };
+  }
+  if (/\b(5\s*pm|5pm|17[:\.]?00)\b/i.test(t) || /\bat\s+5\b/i.test(t)) {
+    return { startTime: "17:00", displayLabel: "5pm" };
+  }
+  return null;
+}
+
+function extractLooseSelectionFromHistory(
+  history: HistoryLine[]
+): { day: string | null; time: { startTime: string; displayLabel: string } | null } {
+  let day: string | null = null;
+  let time: { startTime: string; displayLabel: string } | null = null;
+  const recent = [...history]
+    .filter((h) => h.role === "lead" || h.role === "ai")
+    .slice(-8)
+    .reverse();
+  for (const msg of recent) {
+    if (!day) day = parseDayPreference(msg.text);
+    if (!time) time = parseLooseTime(msg.text);
+    if (day && time) break;
+  }
+  return { day, time };
+}
+
+export function buildLooseProposal(
+  day: string,
+  time: { startTime: string; displayLabel: string }
+): TrialProposal {
+  return buildProposal(
+    {
+      locationId: "",
+      programme: "",
+      slots: [
+        {
+          id: "loose",
+          organization_id: "",
+          location_id: "",
+          programme: "",
+          day_of_week: day,
+          start_time: time.startTime,
+          display_label: time.displayLabel,
+          sort_order: 0,
+        },
+      ],
+    },
+    day,
+    time
+  );
+}
+
+/** Book from thread context when location has no schedule rows in D1. */
+export function resolveLooseAffirmativeBookingChoice(
+  inboundText: string,
+  history: HistoryLine[]
+): TrialProposal | null {
+  if (!isAffirmativeBooking(inboundText)) return null;
+  const fromHist = extractLooseSelectionFromHistory(history);
+  const day = parseDayPreference(inboundText) ?? fromHist.day;
+  const time = parseLooseTime(inboundText) ?? fromHist.time;
+  if (day && time) return buildLooseProposal(day, time);
+  return null;
+}
+
+export function extractLooseSlotFromReplyContext(
+  replyText: string,
+  history: HistoryLine[]
+): TrialProposal | null {
+  const combined =
+    replyText +
+    " " +
+    history
+      .slice(-6)
+      .map((h) => h.text)
+      .join(" ");
+  const day = parseDayPreference(combined);
+  const time = parseLooseTime(combined);
+  if (day && time) return buildLooseProposal(day, time);
+  return null;
 }
 
 export function resolveDayAndTime(
@@ -390,10 +506,12 @@ export function buildQuestionAnswerReply(
 
 export function buildProposeReply(
   lead: Lead,
-  proposal: TrialProposal
+  proposal: TrialProposal,
+  opts?: { schedule?: ProgrammeSchedule; history?: HistoryLine[] }
 ): AiReply {
   const firstName = displayFirstName(lead.name);
-  const text = `Lovely, ${firstName} — shall I pencil you in for ${proposal.label} at our ${lead.location} branch for ${lead.interest}? Just reply yes when you're happy and I'll confirm it.`;
+  const programme = resolveProgrammeLabel(lead, opts);
+  const text = `Lovely, ${firstName} — shall I pencil you in for ${proposal.label} at our ${lead.location} branch${programmeForPhrase(programme)}? Just reply yes when you're happy and I'll confirm it.`;
 
   return proposalReply(
     lead,
@@ -455,9 +573,12 @@ function proposalReply(
 
 const CONFIRM_PATTERNS = [
   /\byou(?:'re| are) booked\b/i,
+  /\bi'?ll\s+confirm\b/i,
+  /\bconfirm\s+your\s+free\s+trial\b/i,
   /\bi'?ll\s+(?:send|get)\s+you\s+(?:a\s+)?confirmation\b/i,
   /\bconfirmed\s+(?:for|your)\b/i,
   /\bbooked\s+(?:in\s+)?for\b/i,
+  /\ball\s+set\s+for\b/i,
   // "see you" followed by a time/day reference
   /\bsee\s+you\b.{0,30}\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday|then|there|next|\d)\b/i,
   /\btrial\s+is\s+confirmed\b/i,
@@ -483,8 +604,6 @@ export function detectBookingIntentInReply(
   if (PROPOSE_PATTERNS.some((p) => p.test(replyText))) return "propose";
   return null;
 }
-
-type HistoryLine = { role: string; text: string };
 
 /**
  * After the LLM generates its reply, attempt to extract a slot from the reply
@@ -513,13 +632,18 @@ export function extractSlotFromReplyContext(
 export function buildConfirmReply(
   lead: Lead,
   proposal: TrialProposal,
-  opts?: { enthusiastic?: boolean }
+  opts?: {
+    enthusiastic?: boolean;
+    schedule?: ProgrammeSchedule | null;
+    history?: HistoryLine[];
+  }
 ): AiReply {
   const firstName = displayFirstName(lead.name);
   const opener = opts?.enthusiastic
     ? `Brilliant, ${firstName}`
     : `Perfect, ${firstName}`;
-  const text = `${opener}! You're booked for ${proposal.label} at our ${lead.location} branch for ${lead.interest}. A coach will confirm details shortly — see you then!`;
+  const programme = resolveProgrammeLabel(lead, opts);
+  const text = `${opener}! You're booked for ${proposal.label} at our ${lead.location} branch${programmeForPhrase(programme)}. A coach will confirm details shortly — see you then!`;
 
   return {
     text,

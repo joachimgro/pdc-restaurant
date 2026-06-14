@@ -42,9 +42,16 @@ export function MessageThread({ lead }: { lead: Lead }) {
         const isLead = m.from === "lead";
         const isStaff = m.from === "staff";
         const newSpeaker = lastFrom !== m.from;
-        const tagClass = isLead ? "" : isStaff ? "staff" : "ai";
-        const tagText = isLead ? "" : isStaff ? "Staff" : "AI";
-        const bubbleClass = isLead ? "lead" : isStaff ? "staff" : "ai";
+        const tagText = isLead
+          ? ""
+          : isStaff
+            ? m.staffAuthorName ?? "Staff"
+            : "AI";
+        const bubbleClass = isLead
+          ? "message-lead"
+          : isStaff
+            ? "message-staff"
+            : "message-ai";
         const hasReasoning = !!m.reasoning && !isLead;
         const rIdx = hasReasoning ? reasoningIndex++ : -1;
         const isOpen = rIdx >= 0 && openReasoning.has(rIdx);
@@ -62,9 +69,7 @@ export function MessageThread({ lead }: { lead: Lead }) {
               <div>
                 <div className={`msg-bubble ${bubbleClass}`}>{m.text}</div>
                 <div className="msg-meta">
-                  {!isLead && (
-                    <span className={`msg-tag ${tagClass}`}>{tagText}</span>
-                  )}
+                  {!isLead && <span className="msg-tag">{tagText}</span>}
                   <span>{m.time}</span>
                   {hasReasoning && (
                     <button

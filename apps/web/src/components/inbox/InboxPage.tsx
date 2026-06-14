@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
+import type { StaffUser } from "@lead-intake/shared-types";
+import { fetchAuthMe } from "@/lib/api/client";
 import { useInboxStore } from "@/store/inbox-store";
-import { getSession } from "@/lib/auth";
-import { logout } from "@/lib/api/admin";
+import { ProfileOnboarding } from "./ProfileOnboarding";
 import { LocationRail } from "./LocationRail";
 import { LeadsPanel } from "./LeadsPanel/LeadsPanel";
 import { ConversationPanel } from "./ConversationPanel/ConversationPanel";
@@ -15,36 +16,61 @@ export function InboxPage() {
   const init = useInboxStore((s) => s.init);
   const loading = useInboxStore((s) => s.loading);
   const error = useInboxStore((s) => s.error);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [authChecked, setAuthChecked] = useState(false);
+  const [staffUser, setStaffUser] = useState<StaffUser | null>(null);
 
-  const [email, setEmail] = useState<string | null>(null);
-
-  // Auth guard — redirect to /login if no session
   useEffect(() => {
-    const session = getSession();
-    if (!session) {
-      router.replace("/login");
-      return;
-    }
-    setEmail(session.email);
-    void init();
+    let cancelled = false;
+    void (async () => {
+      const user = await fetchAuthMe();
+      if (cancelled) return;
+      if (!user) {
+        router.replace("/login");
+        return;
+      }
+      setStaffUser(user);
+      setAuthChecked(true);
+      if (!user.needsProfile) {
+        await init();
+      }
+    })();
     return () => {
+      cancelled = true;
       useInboxStore.getState().sseCleanup?.();
     };
   }, [init, router]);
 
-  async function handleLogout() {
-    await logout();
-    router.replace("/login");
+  async function handleProfileComplete(user: StaffUser) {
+    setStaffUser(user);
+    await init();
   }
 
-  if (loading || email === null) {
+  if (!authChecked) {
     return <div className="loading-screen">Loading…</div>;
+  }
+
+  if (staffUser?.needsProfile) {
+    return (
+      <ProfileOnboarding
+        user={staffUser}
+        onComplete={(user) => void handleProfileComplete(user)}
+      />
+    );
+  }
+
+  if (loading) {
+    return <div className="loading-screen">Loading leads…</div>;
   }
 
   if (error) {
     return (
       <div className="loading-screen">
         <p>{error}</p>
+        <p style={{ marginTop: 8, fontSize: 12 }}>
+          Start the API: <code>pnpm dev:worker</code> then{" "}
+          <code>pnpm db:migrate:local && curl -X POST http://localhost:8787/admin/seed</code>
+        </p>
       </div>
     );
   }
@@ -54,24 +80,20 @@ export function InboxPage() {
       <div className="desktop-only-banner">
         <p>
           Lead Intake is designed for desktop (1200px+). Please use a larger
-          screen.
+          screen for the demo.
         </p>
       </div>
       <div className="inbox-shell">
-        <div className="auth-bar">
-          <span className="auth-bar-email">{email}</span>
-          <button
-            className="auth-bar-logout"
-            onClick={() => void handleLogout()}
-          >
-            Sign out
-          </button>
-        </div>
-        <div className="inbox-app">
-          <LocationRail />
+        <div className={`inbox-app${profileOpen ? "" : " inbox-app--profile-hidden"}`}>
+          <LocationRail staffUser={staffUser} />
           <LeadsPanel />
-          <ConversationPanel />
-          <ProfilePanel />
+          <ConversationPanel
+            profileOpen={profileOpen}
+            onToggleProfile={() => setProfileOpen((v) => !v)}
+          />
+          {profileOpen && (
+            <ProfilePanel onClose={() => setProfileOpen(false)} />
+          )}
         </div>
       </div>
     </>

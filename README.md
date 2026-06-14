@@ -103,10 +103,27 @@ queue = "pdc-{client-slug}-queue"
 
 ---
 
-### 4 — Set up Resend (email auth)
+### 4 — Set up Resend (staff sign-in email)
 
-The platform uses [Resend](https://resend.com) to send magic link sign-in emails. You need
-a Resend account and a verified sending domain before the login flow will work in production.
+Staff sign in with a **passwordless magic link** sent via [Resend](https://resend.com). You
+need a Resend account and a verified sending domain before the login flow works in production.
+
+**How the auth model works**
+
+- **Cookie sessions.** After a staff member clicks their magic link, the Worker sets an
+  `HttpOnly`, `Secure`, `SameSite=Lax` session cookie. There is no token in `localStorage`.
+- **Invite-only.** Only people who exist in the `staff_users` table can request a link.
+  Everyone else gets the same "check your email" response (no account enumeration).
+- **Roles.** `admin` and `member`. Admins can manage the team (invite/list). The first time a
+  member signs in they complete a quick profile (display name) onboarding step.
+- **Hidden platform operator (super admin).** `joachim@phiof.digital` is hardcoded in
+  `workers/api/src/auth/constants.ts` and has access to **every** PDC client build. It is never
+  shown as a role in the team UI and cannot be removed. This is the same across all clients —
+  no env var needed.
+- **API protection.** Every Worker route except the public ones (`/health`, the public lead
+  intake `POST /leads/intake`, `/auth/*`, and `/webhooks/*`) requires a valid session cookie.
+  The frontend sends `credentials: include` on every request (and `withCredentials` on the SSE
+  stream), so this is transparent once signed in.
 
 #### 4a — Create a Resend account and verify your domain
 
@@ -131,21 +148,24 @@ wrangler secret put RESEND_API_KEY
 # Paste the key when prompted
 ```
 
-Then update `workers/api/wrangler.toml` with your verified sender address and deployed app URL:
+Then update `workers/api/wrangler.toml` with your verified sender address and the web origin
+the magic link should redirect back to after sign-in:
 
 ```toml
-RESEND_FROM_EMAIL = "noreply@phiofdigital.com"   # must match a verified Resend domain
-APP_URL = "https://your-app.vercel.app"          # where magic link clicks land (your Next.js URL)
+AUTH_FROM_EMAIL = "noreply@phiofdigital.com"   # must match a verified Resend domain
+AUTH_WEB_ORIGIN = "https://your-app.vercel.app" # Next.js origin (defaults to first CORS_ORIGIN)
 ```
 
-> **Local dev:** If `RESEND_API_KEY` is not set in `.dev.vars`, magic link URLs are printed
-> to the Worker console instead of being emailed. This lets you test the full login flow
-> without a Resend account.
+> **Local dev:** If `RESEND_API_KEY` is not set in `.dev.vars`, the magic link verify URL is
+> printed to the Worker console (and returned as `devVerifyUrl` on localhost) instead of being
+> emailed. This lets you test the full login flow without a Resend account.
 
-#### 4d — First admin
+#### 4d — First sign-in & inviting your team
 
-The migration seeds `SUPER_ADMIN_EMAIL` (default `justphiof@gmail.com`) as the first admin
-automatically. Additional admins can be added via the Admin panel → Admins tab after first login.
+The super admin (`joachim@phiof.digital`) can sign in on any deployment immediately — its
+`staff_users` row is created automatically on first login. Once signed in, go to the
+**Admin panel → Team** to invite the client's own admins and members by email; each invitee
+receives a magic link and completes the profile step on first sign-in.
 
 ---
 
@@ -239,7 +259,7 @@ pnpm deploy:remote
 
 This script:
 1. Installs dependencies
-2. Applies D1 migrations (creates tables + seeds super admin)
+2. Applies D1 migrations (creates tables including the staff auth tables)
 3. Ensures the Vectorize index exists
 4. Deploys the Worker
 5. Ingests knowledge chunks into Vectorize
@@ -247,8 +267,9 @@ This script:
 7. Prints next steps
 
 After deploy, go to the app URL → you'll land on `/login`. Enter the super admin email
-and you'll receive a magic link. From the Admin panel you can then add more admins,
-configure AI, and verify knowledge is ingested correctly.
+(`joachim@phiof.digital`) and you'll receive a magic link — its staff record is created on
+first sign-in. From the **Admin panel → Team** you can then invite the client's own admins and
+members, configure AI, and verify knowledge is ingested correctly.
 
 ---
 
@@ -378,7 +399,9 @@ pdc-template/
 │       └── src/
 │           ├── index.ts        # Request router + queue handler
 │           ├── env.ts          # Env bindings interface
-│           ├── routes/         # admin, leads, events, webhooks, intake, knowledge, locations
+│           ├── routes/         # auth, admin, leads, events, webhooks, intake, knowledge, locations
+│           ├── auth/           # Staff sessions, magic-link tokens, roles, activity log
+│           ├── email/          # Resend magic-link email template
 │           ├── ai/             # RAG pipeline, prompt builder, LLM judge, qualification
 │           └── queue/          # Queue consumer (async AI processing)
 ├── packages/
@@ -405,10 +428,12 @@ pdc-template/
 | `ORGANIZATION_ID` | Yes | Unique client slug (e.g. `acme-bjj`) |
 | `CORS_ORIGIN` | Yes | Comma-separated allowed origins |
 | `AI_EMBED_MODEL` | No | Embedding model (default: `@cf/baai/bge-base-en-v1.5`) |
-| `ENABLE_DEMO_TOOLS` | No | Set `"true"` to enable `/admin/seed` and `/leads/simulate` |
-| `SUPER_ADMIN_EMAIL` | Yes | Email of permanent super admin (cannot be removed) |
-| `RESEND_FROM_EMAIL` | Yes | Verified sender address in Resend |
-| `APP_URL` | Yes | Deployed Next.js URL (used to build magic link URLs) |
+| `ENABLE_DEMO_TOOLS` | No | Set `"true"` to enable `/admin/seed`, `/admin/reset-all` and `/leads/simulate` |
+| `AUTH_FROM_EMAIL` | Yes | Verified Resend sender address for staff sign-in emails |
+| `AUTH_WEB_ORIGIN` | No | Web origin to redirect to after sign-in (defaults to first `CORS_ORIGIN`) |
+
+> The super admin (`joachim@phiof.digital`) is hardcoded in `workers/api/src/auth/constants.ts`
+> and is the same across every PDC build — there is no super-admin env var.
 
 ### Worker secrets (`wrangler secret put`)
 

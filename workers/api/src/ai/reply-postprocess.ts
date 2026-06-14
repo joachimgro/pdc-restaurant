@@ -1,5 +1,6 @@
 import type { Lead } from "@lead-intake/shared-types";
 import { displayFirstName, pickScheduleLine } from "./intake-context";
+import { isUnknownInterest, resolveProgrammeLabel } from "./programme-resolve";
 
 type HistoryLine = { role: "lead" | "ai" | "staff"; text: string };
 
@@ -12,6 +13,9 @@ export function applyTemplateTokens(
   scheduleLine?: string
 ): string {
   const firstName = displayFirstName(lead.name);
+  const programme =
+    resolveProgrammeLabel(lead) ??
+    (isUnknownInterest(lead.interest) ? "your class" : lead.interest);
   const schedule = scheduleLine ?? pickScheduleLine(lead);
   const timePhrase =
     schedule.startsWith("on ") || schedule.startsWith("through")
@@ -20,8 +24,10 @@ export function applyTemplateTokens(
 
   return text
     .replace(/\{firstName\}/gi, firstName)
-    .replace(/\{programme\}/gi, lead.interest)
-    .replace(/\{lessonType\}/gi, lead.interest)
+    .replace(/\{programme\}/gi, programme)
+    .replace(/\{lessonType\}/gi, programme)
+    .replace(/\bfor\s+Unknown\b/gi, programme ? `for ${programme}` : "")
+    .replace(/\bUnknown\b/g, programme)
     .replace(/\{branch\}/gi, lead.location)
     .replace(/\{location\}/gi, lead.location)
     .replace(/\{times?\}/gi, timePhrase)

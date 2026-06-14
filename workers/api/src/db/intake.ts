@@ -4,6 +4,7 @@ import { insertDomainEvent } from "./events";
 import {
   getLead,
   insertMessage,
+  nowTimeLabel,
   updateLeadFields,
 } from "./leads";
 import type { Env } from "../env";
@@ -12,15 +13,6 @@ import { canonicalPhone } from "./phone-utils";
 export interface InboundLeadResult {
   leadId: string;
   isNew: boolean;
-}
-
-function slugId(name: string): string {
-  const base = name
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "")
-    .slice(0, 20);
-  return `${base || "lead"}-${crypto.randomUUID().slice(0, 6)}`;
 }
 
 export async function createInboundFromIntake(
@@ -74,6 +66,7 @@ export async function createInboundFromIntake(
       `UPDATE leads SET
          location_id = ?,
          interest = ?,
+         location_confirmed = 1,
          child_json = COALESCE(?, child_json),
          updated_at = datetime('now')
        WHERE id = ?`
@@ -100,15 +93,15 @@ export async function createInboundFromIntake(
     return { leadId, isNew: false };
   }
 
-  const leadId = slugId(input.name);
+  const leadId = crypto.randomUUID();
   const childJson = child ? JSON.stringify(child) : null;
 
   await env.DB.prepare(
     `INSERT INTO leads (
       id, organization_id, location_id, name, phone, time_label,
       status, status_label, assessment, preview, unread, source, interest,
-      child_json, list_group, sort_order, just_arrived
-    ) VALUES (?, ?, ?, ?, ?, 'now', 'new', 'New', ?, ?, 1, 'Website', ?, ?, 'today', 0, 1)`
+      location_confirmed, child_json, list_group, sort_order, just_arrived
+    ) VALUES (?, ?, ?, ?, ?, ?, 'new', 'New', ?, ?, 1, 'Website', ?, 1, ?, 'today', 0, 1)`
   )
     .bind(
       leadId,
@@ -116,6 +109,7 @@ export async function createInboundFromIntake(
       input.locationId,
       input.name.trim(),
       phone,
+      nowTimeLabel(),
       "New enquiry — sending welcome",
       preview,
       input.interest,
@@ -123,17 +117,19 @@ export async function createInboundFromIntake(
     )
     .run();
 
+  const now = nowTimeLabel();
   const timelineParts = [
     { bold: "New lead", text: ` · Website form · ${input.interest}` },
   ];
   if (child) {
     await env.DB.prepare(
       `INSERT INTO timeline_events (id, lead_id, sort_order, time_label, parts_json)
-       VALUES (?, ?, 1, 'now', ?)`
+       VALUES (?, ?, 1, ?, ?)`
     )
       .bind(
         crypto.randomUUID(),
         leadId,
+        now,
         JSON.stringify([{ text: `Child: ${child.name}, age ${child.age}` }])
       )
       .run();
@@ -141,9 +137,9 @@ export async function createInboundFromIntake(
 
   await env.DB.prepare(
     `INSERT INTO timeline_events (id, lead_id, sort_order, time_label, parts_json)
-     VALUES (?, ?, 0, 'now', ?)`
+     VALUES (?, ?, 0, ?, ?)`
   )
-    .bind(crypto.randomUUID(), leadId, JSON.stringify(timelineParts))
+    .bind(crypto.randomUUID(), leadId, now, JSON.stringify(timelineParts))
     .run();
 
   await insertMessage(env.DB, leadId, 0, {

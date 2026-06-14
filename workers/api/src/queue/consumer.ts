@@ -4,6 +4,7 @@ import {
   getLead,
   insertMessage,
   nextMessageSortOrder,
+  nowTimeLabel,
   updateLeadFields,
 } from "../db/leads";
 import {
@@ -91,7 +92,7 @@ async function processSimulateReply(
     kind: "chat",
     from: "ai",
     text: reply.text,
-    time: "now",
+    time: nowTimeLabel(),
     reasoning: reply.reasoning,
   };
 
@@ -102,12 +103,24 @@ async function processSimulateReply(
     chatMsg
   );
 
-  if (reply.preview || reply.assessment || reply.status) {
+  if (
+    reply.preview ||
+    reply.assessment ||
+    reply.status ||
+    reply.trialSlotLabel
+  ) {
     await updateLeadFields(env, leadId, {
       preview: reply.preview,
       assessment: reply.assessment,
       status: reply.status,
       statusLabel: reply.statusLabel,
+      trialSlot: reply.trialSlot ?? undefined,
+      trialSlotLabel: reply.trialSlotLabel ?? undefined,
+      trialProposedJson: reply.trialProposed
+        ? JSON.stringify(reply.trialProposed)
+        : undefined,
+      trialConfirmedAt:
+        reply.status === "booked" ? new Date().toISOString() : undefined,
     });
   }
 

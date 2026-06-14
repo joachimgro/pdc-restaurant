@@ -25,14 +25,17 @@ AI_EMBED_MODEL = "@cf/baai/bge-base-en-v1.5"
 # Set to "true" to enable /admin/seed and /leads/simulate (demo/dev only)
 ENABLE_DEMO_TOOLS = "false"
 
-# TODO: email of the permanent super admin (cannot be removed via API)
-SUPER_ADMIN_EMAIL = "justphiof@gmail.com"
+# ── Staff auth (magic-link sign-in via Resend) ───────────────────────────────
+# The hidden platform operator (super admin) is hardcoded in
+# workers/api/src/auth/constants.ts (joachim@phiof.digital) and is the same
+# across every PDC client build — no env var needed.
 
 # TODO: verified sender address in Resend (domain must be verified at resend.com)
-RESEND_FROM_EMAIL = "CHANGE_ME"
+AUTH_FROM_EMAIL = "CHANGE_ME"
 
-# TODO: deployed Next.js app URL — used to build the magic link click-through URL
-APP_URL = "CHANGE_ME"
+# TODO: deployed Next.js app URL — where the verify link redirects after sign-in.
+# Defaults to the first CORS_ORIGIN if left unset.
+AUTH_WEB_ORIGIN = "CHANGE_ME"
 
 # RESEND_API_KEY is a secret — never put it here. Set with: wrangler secret put RESEND_API_KEY
 

@@ -1,7 +1,9 @@
 import type { Lead } from "@lead-intake/shared-types";
 import type { ProgrammeSchedule } from "../db/location-schedules";
 import { confirmTrial, proposeTrial } from "../db/trial-booking";
+import { getLead } from "../db/leads";
 import type { Env } from "../env";
+import { ensureLeadProgramme } from "./qualification";
 import type { AiReply } from "./pipeline";
 import {
   buildConfirmReply,
@@ -14,6 +16,8 @@ import {
   isSoftAffirmation,
   needsDayClarification,
   resolveDayAndTime,
+  resolveAffirmativeBookingChoice,
+  resolveLooseAffirmativeBookingChoice,
   resolveScheduleChoice,
 } from "./booking-flow";
 import { isWebsiteIntakePrompt } from "./intake-context";
@@ -29,15 +33,48 @@ export async function runHumanBookingFlow(
   history: HistoryLine[] = []
 ): Promise<AiReply | null> {
   if (isWebsiteIntakePrompt(inboundText)) return null;
-  if (!schedule?.slots.length) return null;
+
+  if (!schedule?.slots.length) {
+    const loose = resolveLooseAffirmativeBookingChoice(inboundText, history);
+    if (loose && !lead.trialSlot) {
+      await ensureLeadProgramme(env, leadId, lead, { history });
+      const refreshed = (await getLead(env, leadId)) ?? lead;
+      const reply = buildConfirmReply(refreshed, loose, { history });
+      await confirmTrial(env, leadId, loose, { history });
+      return reply;
+    }
+    return null;
+  }
+
+  const affirmativeChoice = resolveAffirmativeBookingChoice(
+    inboundText,
+    schedule,
+    history
+  );
+  if (affirmativeChoice && !lead.trialSlot) {
+    await ensureLeadProgramme(env, leadId, lead, { schedule, history });
+    const refreshed = (await getLead(env, leadId)) ?? lead;
+    const reply = buildConfirmReply(refreshed, affirmativeChoice, {
+      enthusiastic: isSoftAffirmation(inboundText),
+      schedule,
+      history,
+    });
+    await confirmTrial(env, leadId, affirmativeChoice, { schedule, history });
+    return reply;
+  }
 
   if (
     lead.trialProposed &&
     !lead.trialSlot &&
     isAffirmativeBooking(inboundText)
   ) {
-    const reply = buildConfirmReply(lead, lead.trialProposed);
-    await confirmTrial(env, leadId, lead.trialProposed);
+    await ensureLeadProgramme(env, leadId, lead, { schedule, history });
+    const refreshed = (await getLead(env, leadId)) ?? lead;
+    const reply = buildConfirmReply(refreshed, lead.trialProposed, {
+      schedule,
+      history,
+    });
+    await confirmTrial(env, leadId, lead.trialProposed, { schedule, history });
     return reply;
   }
 
@@ -58,15 +95,21 @@ export async function runHumanBookingFlow(
 
   const choice = resolveScheduleChoice(inboundText, schedule, history);
   if (choice && isAffirmativeBooking(inboundText)) {
-    const reply = buildConfirmReply(lead, choice, {
+    await ensureLeadProgramme(env, leadId, lead, { schedule, history });
+    const refreshed = (await getLead(env, leadId)) ?? lead;
+    const reply = buildConfirmReply(refreshed, choice, {
       enthusiastic: isSoftAffirmation(inboundText),
+      schedule,
+      history,
     });
-    await confirmTrial(env, leadId, choice);
+    await confirmTrial(env, leadId, choice, { schedule, history });
     return reply;
   }
 
   if (choice) {
-    const reply = buildProposeReply(lead, choice);
+    await ensureLeadProgramme(env, leadId, lead, { schedule, history });
+    const refreshed = (await getLead(env, leadId)) ?? lead;
+    const reply = buildProposeReply(refreshed, choice, { schedule, history });
     await proposeTrial(env, leadId, choice);
     return reply;
   }

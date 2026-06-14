@@ -1,8 +1,10 @@
-# PDC — Architecture
+# Lead Intake — Architecture
 
-The **dashboard is the core product surface**: owners see conversations in real time, stage colour-coding, and AI reasoning. SMS/intake form are the inputs; the inbox is the delivery.
+## Product vs demo
 
-The platform is niche-agnostic — all client-specific content (knowledge, AI persona, locations) lives in configuration, not code.
+The **dashboard is the demo closer**: owners see conversations in real time, stage colour-coding, and AI reasoning. SMS/Meta are inputs; the inbox is the product surface.
+
+Phase 1 ships a **martial-arts–tuned** dataset (kids BJJ, trials, multi-location) in D1, a live SSE dashboard, and webhook stubs. Telnyx + Claude wire in via env without restructuring.
 
 ## Stack
 
@@ -87,15 +89,14 @@ POST /leads/:id/takeover → sets ai_paused, emits lead.updated
 
 ## Remote deployment (default)
 
-Production D1 + Worker live on Cloudflare. All resource names follow the `pdc-{client-slug}-*` convention
-set in `workers/api/wrangler.toml`.
+Production D1 + Worker live on Cloudflare:
 
-- **Worker:** `https://pdc-{client-slug}.{account}.workers.dev`
+- **Worker:** `https://pdc-{client-slug}.<your-subdomain>.workers.dev`
 - **D1:** `pdc-{client-slug}-db` — migrations in `workers/api/migrations/`
 - **Queue:** `pdc-{client-slug}-queue`
 
 ```bash
-pnpm deploy:remote   # migrate (remote) → deploy → ingest knowledge → update apps/web/.env.local
+pnpm deploy:remote   # migrate (remote) → deploy → seed → update apps/web/.env.local
 pnpm dev             # Next.js uses remote API
 ```
 

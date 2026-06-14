@@ -1,0 +1,3 @@
+-- Reserved migration slot (was demo-specific schedule seed data in the source build).
+-- Intentionally empty in the template — add client-specific schedules in 0006 or via the
+-- Admin panel -> Locations -> Schedules.

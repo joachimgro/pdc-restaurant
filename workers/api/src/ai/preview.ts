@@ -88,6 +88,7 @@ export async function previewKnowledge(
           },
         ],
         timeline: [],
+        notes: [],
       };
       const scheduleLine = pickScheduleLine(lead, chunks, null);
       const ctx: ConversationContext = {

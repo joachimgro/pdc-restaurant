@@ -1,15 +1,19 @@
 "use client";
 
 import { useState } from "react";
+import type { StaffUser } from "@lead-intake/shared-types";
 import { RESET_CONFIRM } from "@/lib/api/admin";
 import { useInboxStore } from "@/store/inbox-store";
+import { TeamSection } from "./TeamSection";
 
 export function AdminPanel({
   open,
   onClose,
+  staffUser,
 }: {
   open: boolean;
   onClose: () => void;
+  staffUser: StaffUser | null;
 }) {
   const deleteAll = useInboxStore((s) => s.deleteAllLeads);
   const restoreDemo = useInboxStore((s) => s.restoreDemoSeed);
@@ -78,6 +82,8 @@ export function AdminPanel({
           Demo controls for the team inbox. These actions affect the live D1
           database.
         </p>
+
+        {staffUser?.canManageTeam && <TeamSection staffUser={staffUser} />}
 
         <section className="admin-section">
           <h3>Restore demo data</h3>

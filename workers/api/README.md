@@ -5,7 +5,7 @@ REST + SSE API backed by D1. Async AI via Cloudflare Queues, **Workers AI**, and
 ## AI pipeline
 
 1. Queue consumer loads lead thread + `ai_config` from D1
-2. Embeds inbound text → queries Vectorize (`lead-intake-knowledge`)
+2. Embeds inbound text → queries Vectorize (`pdc-{client-slug}-knowledge`)
 3. **Llama 3.3 70B** generates a JSON reply grounded in knowledge
 4. **Llama 3.1 8B** judge + rule checks → Approve / Rewrite / Hold
 5. Saves message + reasoning; optional Twilio SMS (safe fallback on Hold)
@@ -14,10 +14,21 @@ Set `AI_DISABLED=true` in `[vars]` to use template stubs without Workers AI.
 
 ## Endpoints
 
+All routes require a valid staff session cookie **except** the public ones marked below
+(`/health`, `POST /leads/intake`, `/auth/*`, `/webhooks/*`). See the root README "Set up Resend
+(staff sign-in email)" section for the auth model.
+
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/health` | Health check |
-| POST | `/admin/seed` | Seed demo data (idempotent) |
+| GET | `/health` | Health check (public) |
+| POST | `/auth/magic-link` | Request a sign-in link (public) |
+| GET | `/auth/verify` | Verify token, set session cookie, redirect (public) |
+| POST | `/auth/logout` | Clear session |
+| GET | `/auth/me` | Current staff user |
+| PATCH | `/auth/profile` | Set display name (onboarding) |
+| GET | `/auth/team` | List team (admins only) |
+| POST | `/auth/team/invite` | Invite a teammate (admins only) |
+| POST | `/admin/seed` | Seed demo data — only when `ENABLE_DEMO_TOOLS=true` |
 | GET | `/admin/ai-config` | Persona + ingest metadata |
 | GET | `/admin/ai-status` | AI/RAG binding status |
 | POST | `/admin/ingest-knowledge` | Re-index knowledge (`{ "confirm": "INGEST KNOWLEDGE" }`) |
@@ -32,9 +43,9 @@ Set `AI_DISABLED=true` in `[vars]` to use template stubs without Workers AI.
 | GET | `/leads/:id` | Full lead + thread |
 | POST | `/leads/:id/select` | Mark read |
 | POST | `/leads/:id/takeover` | Pause AI |
-| POST | `/leads/intake` | Website form → queue AI |
-| POST | `/leads/simulate` | Olivia demo |
-| GET | `/events/stream` | SSE |
+| POST | `/leads/intake` | Website form → queue AI (public) |
+| POST | `/leads/simulate` | Simulate a lead — only when `ENABLE_DEMO_TOOLS=true` |
+| GET | `/events/stream` | SSE (cookie via `withCredentials`) |
 | POST | `/webhooks/twilio` | Inbound SMS |
 
 ## Remote deploy

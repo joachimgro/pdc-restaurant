@@ -6,6 +6,18 @@ import type {
   TimelineEvent,
 } from "@lead-intake/shared-types";
 import type { Env } from "../env";
+import { loadLeadNotes, insertLeadNote } from "./lead-notes";
+
+export { insertLeadNote, loadLeadNotes };
+
+/** Returns the current time as a human-readable label, e.g. "10:42 AM". */
+export function nowTimeLabel(): string {
+  return new Date().toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  });
+}
 
 type LeadRow = {
   id: string;
@@ -28,6 +40,7 @@ type LeadRow = {
   trial_slot_label: string | null;
   trial_proposed_json: string | null;
   trial_confirmed_at: string | null;
+  location_confirmed: number;
 };
 
 type MessageRow = {
@@ -41,6 +54,8 @@ type MessageRow = {
   verdict: string | null;
   stage: string | null;
   note: string | null;
+  staff_user_id: string | null;
+  staff_author_name: string | null;
 };
 
 type TimelineRow = {
@@ -67,6 +82,12 @@ function rowToMessage(r: MessageRow): Message {
     text: r.body!,
     time: r.time_label!,
   };
+  if (r.staff_author_name) {
+    msg.staffAuthorName = r.staff_author_name;
+  }
+  if (r.staff_user_id) {
+    msg.staffUserId = r.staff_user_id;
+  }
   if (r.verdict && r.stage && r.note) {
     msg.reasoning = { verdict: r.verdict, stage: r.stage, note: r.note };
   }
@@ -88,6 +109,7 @@ async function loadMessages(db: D1Database, leadId: string): Promise<Message[]> 
   const { results } = await db
     .prepare(
       `SELECT m.id, m.kind, m.from_role, m.body, m.time_label, m.day_label, m.auto_followup_label,
+              m.staff_user_id, m.staff_author_name,
               r.verdict, r.stage, r.note
        FROM messages m
        LEFT JOIN message_reasoning r ON r.message_id = m.id
@@ -139,8 +161,10 @@ async function rowToLead(db: D1Database, row: LeadRow): Promise<Lead> {
       ? JSON.parse(row.trial_proposed_json)
       : undefined,
     trialConfirmedAt: row.trial_confirmed_at ?? undefined,
+    locationConfirmed: row.location_confirmed !== 0,
     justArrived: row.just_arrived === 1,
     aiPaused: row.ai_paused === 1,
+    notes: await loadLeadNotes(db, row.id),
     messages: await loadMessages(db, row.id),
     timeline: await loadTimeline(db, row.id),
   };
@@ -257,6 +281,8 @@ export async function updateLeadFields(
     statusLabel: string;
     unread: boolean;
     aiPaused: boolean;
+    locationId: string;
+    locationConfirmed: boolean;
     trialSlot: string | null;
     trialSlotLabel: string | null;
     trialProposedJson: string | null;
@@ -289,6 +315,14 @@ export async function updateLeadFields(
   if (fields.aiPaused !== undefined) {
     sets.push("ai_paused = ?");
     binds.push(fields.aiPaused ? 1 : 0);
+  }
+  if (fields.locationId !== undefined) {
+    sets.push("location_id = ?");
+    binds.push(fields.locationId);
+  }
+  if (fields.locationConfirmed !== undefined) {
+    sets.push("location_confirmed = ?");
+    binds.push(fields.locationConfirmed ? 1 : 0);
   }
   if (fields.trialSlot !== undefined) {
     sets.push("trial_slot = ?");
@@ -347,10 +381,19 @@ export async function insertMessage(
 
   await db
     .prepare(
-      `INSERT INTO messages (id, lead_id, sort_order, kind, from_role, body, time_label)
-       VALUES (?, ?, ?, 'chat', ?, ?, ?)`
+      `INSERT INTO messages (id, lead_id, sort_order, kind, from_role, body, time_label, staff_user_id, staff_author_name)
+       VALUES (?, ?, ?, 'chat', ?, ?, ?, ?, ?)`
     )
-    .bind(id, leadId, sortOrder, message.from, message.text, message.time)
+    .bind(
+      id,
+      leadId,
+      sortOrder,
+      message.from,
+      message.text,
+      message.time,
+      message.staffUserId ?? null,
+      message.staffAuthorName ?? null
+    )
     .run();
 
   if (message.reasoning) {

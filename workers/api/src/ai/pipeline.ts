@@ -39,13 +39,43 @@ import {
   extractSlotFromReplyContext,
   isAffirmativeBooking,
   isSoftAffirmation,
+  extractLooseSlotFromReplyContext,
+  resolveAffirmativeBookingChoice,
+  resolveLooseAffirmativeBookingChoice,
   resolveScheduleChoice,
 } from "./booking-flow";
 import { confirmTrial, proposeTrial } from "../db/trial-booking";
 import { runHumanBookingFlow } from "./run-booking-flow";
 import { stubReplyForOlivia, stubReplyFromLead } from "./stub";
 import { aiEnabled, runChatModel, type ChatMessage } from "./workers-ai";
-import { handleQualificationTurn, needsQualification } from "./qualification";
+import { handleQualificationTurn, learnFromMessage, needsQualification } from "./qualification";
+import { extractProgrammeFromText } from "./programme-resolve";
+import type { Lead } from "@lead-intake/shared-types";
+import type { ProgrammeSchedule } from "../db/location-schedules";
+
+function replyUsesWrongProgramme(text: string, lead: Lead): boolean {
+  if (!lead.interest || lead.interest === "Unknown") return false;
+  const mentioned = extractProgrammeFromText(text);
+  return Boolean(mentioned && mentioned !== lead.interest);
+}
+
+function structuredBookingOverride(
+  lead: Lead,
+  inboundText: string,
+  history: { role: string; text: string }[],
+  schedule: ProgrammeSchedule | null
+) {
+  if (schedule?.slots.length) {
+    return (
+      extractSlotFromReplyContext("", schedule, history) ??
+      resolveAffirmativeBookingChoice(inboundText, schedule, history)
+    );
+  }
+  return (
+    resolveLooseAffirmativeBookingChoice(inboundText, history) ??
+    extractLooseSlotFromReplyContext("", history)
+  );
+}
 
 export interface AiReply {
   text: string;
@@ -171,6 +201,10 @@ export async function generateAiReply(
     };
   }
 
+  // Silently update the lead profile with anything we can learn from this message.
+  // Runs regardless of which flow handles the reply (booking, LLM, etc.).
+  await learnFromMessage(env, ctx.lead, inboundText, ctx.history);
+
   const bookingReply = await runHumanBookingFlow(
     env,
     leadId,
@@ -191,13 +225,23 @@ export async function generateAiReply(
     );
     if (choice) {
       if (isAffirmativeBooking(inboundText)) {
-        await confirmTrial(env, leadId, choice);
-        return buildConfirmReply(ctx.lead, choice, {
+        await confirmTrial(env, leadId, choice, {
+          schedule: dbSchedule,
+          history: ctx.history,
+        });
+        const refreshed = (await getLead(env, leadId)) ?? ctx.lead;
+        return buildConfirmReply(refreshed, choice, {
           enthusiastic: isSoftAffirmation(inboundText),
+          schedule: dbSchedule,
+          history: ctx.history,
         });
       }
       await proposeTrial(env, leadId, choice);
-      return buildProposeReply(ctx.lead, choice);
+      const refreshed = (await getLead(env, leadId)) ?? ctx.lead;
+      return buildProposeReply(refreshed, choice, {
+        schedule: dbSchedule,
+        history: ctx.history,
+      });
     }
   }
 
@@ -401,21 +445,63 @@ export async function generateAiReply(
       );
     }
 
+    // LLM picked the wrong class (common on form leads) — use structured confirm instead.
+    if (
+      dbSchedule?.slots.length &&
+      replyUsesWrongProgramme(finalText, ctx.lead)
+    ) {
+      const slot = structuredBookingOverride(
+        ctx.lead,
+        inboundText,
+        ctx.history,
+        dbSchedule
+      );
+      if (slot) {
+        await confirmTrial(env, leadId, slot, {
+          schedule: dbSchedule,
+          history: ctx.history,
+        });
+        const refreshed = (await getLead(env, leadId)) ?? ctx.lead;
+        return buildConfirmReply(refreshed, slot, {
+          schedule: dbSchedule,
+          history: ctx.history,
+        });
+      }
+    }
+
     // Post-LLM: if the reply contains booking language, back it with a real DB write.
-    if (dbSchedule?.slots.length) {
-      const bookingIntent = detectBookingIntentInReply(finalText);
-      if (bookingIntent) {
-        const slot =
-          ctx.lead.trialProposed ??
-          extractSlotFromReplyContext(finalText, dbSchedule, ctx.history);
-        if (slot) {
+    const bookingIntent = detectBookingIntentInReply(finalText);
+    if (bookingIntent) {
+      const slot =
+        ctx.lead.trialProposed ??
+        (dbSchedule?.slots.length
+          ? extractSlotFromReplyContext(finalText, dbSchedule, ctx.history)
+          : extractLooseSlotFromReplyContext(finalText, ctx.history)) ??
+        structuredBookingOverride(
+          ctx.lead,
+          inboundText,
+          ctx.history,
+          dbSchedule
+        );
+      if (slot) {
           if (bookingIntent === "confirm") {
-            await confirmTrial(env, leadId, slot);
+            await confirmTrial(env, leadId, slot, {
+              schedule: dbSchedule,
+              history: ctx.history,
+            });
+            const refreshed = (await getLead(env, leadId)) ?? ctx.lead;
+            if (replyUsesWrongProgramme(finalText, ctx.lead)) {
+              return buildConfirmReply(refreshed, slot, {
+                schedule: dbSchedule,
+                history: ctx.history,
+              });
+            }
+            const bookedText = applyTemplateTokens(finalText, refreshed, scheduleLine);
             return {
-              text: finalText,
+              text: bookedText,
               smsText: judged.smsText
-                ? applyTemplateTokens(judged.smsText, ctx.lead, scheduleLine)
-                : finalText,
+                ? applyTemplateTokens(judged.smsText, refreshed, scheduleLine)
+                : bookedText,
               skipSms: judged.skipSms,
               reasoning: {
                 ...judged.reasoning,
@@ -449,7 +535,6 @@ export async function generateAiReply(
             };
           }
         }
-      }
     }
 
     const preview =

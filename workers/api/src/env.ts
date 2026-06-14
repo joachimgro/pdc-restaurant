@@ -5,18 +5,10 @@ export interface Env {
   KNOWLEDGE?: VectorizeIndex;
   ORGANIZATION_ID: string;
   CORS_ORIGIN: string;
-  /** Set to "true" to enable /admin/seed and /leads/simulate (demo/dev only — off by default) */
+  /** Set to "true" to enable /admin/seed, /admin/reset-all, /leads/simulate (demo/dev only) */
   ENABLE_DEMO_TOOLS?: string;
   /** Set to "true" to use template stub instead of Workers AI */
   AI_DISABLED?: string;
-  /** Resend API key — set via: wrangler secret put RESEND_API_KEY */
-  RESEND_API_KEY?: string;
-  /** Verified sender address in Resend, e.g. noreply@yourdomain.com */
-  RESEND_FROM_EMAIL?: string;
-  /** Deployed Next.js app URL — used to build magic link URLs */
-  APP_URL?: string;
-  /** Email of the super admin — cannot be removed via API */
-  SUPER_ADMIN_EMAIL?: string;
   AI_EMBED_MODEL?: string;
   TELNYX_API_KEY?: string;
   TWILIO_ACCOUNT_SID?: string;
@@ -30,6 +22,10 @@ export interface Env {
   /** Set to "true" only for local testing without signature */
   TWILIO_SKIP_SIGNATURE_VALIDATION?: string;
   ADMIN_SEED_SECRET?: string;
+  RESEND_API_KEY?: string;
+  AUTH_FROM_EMAIL?: string;
+  /** Web app origin for post-login redirect (defaults to first CORS_ORIGIN) */
+  AUTH_WEB_ORIGIN?: string;
 }
 
 export type QueueMessage =

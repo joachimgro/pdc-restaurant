@@ -154,6 +154,8 @@ Schedule: ${schedule}
 ${bookingRules ? `${bookingRules}\n` : ""}
 Hard rules:
 - Use branch "${lead.location}" and programme "${lead.interest}" unless they ask to change.
+- NEVER substitute a different class (e.g. do not say BJJ if the form says ${lead.interest}).
+- Once a day and time are agreed, confirm warmly — do NOT ask them to pick again from 5pm / 7:30pm / 8:30pm.
 - Read the thread; do not re-ask answered questions.
 - Never output template tags like {firstName}.`;
 }

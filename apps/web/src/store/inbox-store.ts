@@ -14,6 +14,9 @@ import {
   selectLeadOrNull,
   simulateNewLead,
   subscribeEvents,
+  resumeAiLead,
+  addLeadNote as apiAddLeadNote,
+  sendStaffMessage as apiSendStaffMessage,
   takeoverLead,
 } from "@/lib/api/client";
 
@@ -72,7 +75,9 @@ interface InboxState {
   reloadLeads: () => Promise<void>;
   selectLead: (id: string) => Promise<void>;
   simulateNewLead: () => Promise<void>;
-  takeover: () => Promise<void>;
+  toggleAiControl: () => Promise<void>;
+  sendStaffMessage: (text: string) => Promise<{ smsSent: boolean }>;
+  addLeadNote: (body: string) => Promise<void>;
   deleteLead: (id: string) => Promise<void>;
   deleteAllLeads: () => Promise<{ message: string }>;
   restoreDemoSeed: () => Promise<{ seeded: boolean; count: number }>;
@@ -227,16 +232,31 @@ export const useInboxStore = create<InboxState>((set, get) => ({
     }, 3000);
   },
 
-  takeover: async () => {
+  toggleAiControl: async () => {
     const id = get().activeLeadId;
     if (!id) return;
-    const lead = await takeoverLead(id);
+    const current = get().leads[id];
+    const lead = current?.aiPaused
+      ? await resumeAiLead(id)
+      : await takeoverLead(id);
     set((s) => ({
       leads: { ...s.leads, [id]: lead },
     }));
-    alert(
-      "In live system: pauses AI, opens text input for staff to reply manually."
-    );
+  },
+
+  sendStaffMessage: async (text: string) => {
+    const id = get().activeLeadId;
+    if (!id) throw new Error("No active lead");
+    const { lead, smsSent } = await apiSendStaffMessage(id, text);
+    set((s) => ({ leads: { ...s.leads, [id]: lead } }));
+    return { smsSent };
+  },
+
+  addLeadNote: async (body: string) => {
+    const id = get().activeLeadId;
+    if (!id) return;
+    const lead = await apiAddLeadNote(id, body);
+    set((s) => ({ leads: { ...s.leads, [id]: lead } }));
   },
 
   refreshLead: async (id: string) => {

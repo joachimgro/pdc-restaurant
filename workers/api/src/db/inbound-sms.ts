@@ -3,6 +3,7 @@ import {
   getLead,
   insertMessage,
   nextMessageSortOrder,
+  nowTimeLabel,
   updateLeadFields,
 } from "./leads";
 import type { Env } from "../env";
@@ -25,11 +26,6 @@ export interface InboundSmsResult {
   skipped?: boolean;
 }
 
-function slugFromPhone(phone: string): string {
-  const digits = phone.replace(/\D/g, "").slice(-8);
-  return `sms-${digits || crypto.randomUUID().slice(0, 6)}`;
-}
-
 export async function processInboundSms(
   env: Env,
   input: InboundSmsInput
@@ -38,6 +34,7 @@ export async function processInboundSms(
   const text = input.text.trim();
   const source = input.source ?? "SMS";
   const locationId = input.locationId ?? "manchester";
+  const locationConfirmed = !!input.locationId; // false when falling back to default
 
   if (!phone || !text) {
     return {
@@ -128,11 +125,12 @@ export async function processInboundSms(
       });
     }
 
+    const msgTime = nowTimeLabel();
     const messageId = await insertMessage(env.DB, leadId, order, {
       kind: "chat",
       from: "lead",
       text,
-      time: "now",
+      time: msgTime,
     });
 
     await updateLeadFields(env, leadId, {
@@ -152,7 +150,7 @@ export async function processInboundSms(
             id: messageId,
             from: "lead",
             text,
-            time: "now",
+            time: msgTime,
           },
         },
       });
@@ -165,15 +163,15 @@ export async function processInboundSms(
     return { leadId, isNew: false, messageId };
   }
 
-  const leadId = slugFromPhone(phone);
+  const leadId = crypto.randomUUID();
   const displayName = input.displayName?.trim() || phone;
 
   await env.DB.prepare(
     `INSERT INTO leads (
       id, organization_id, location_id, name, phone, time_label,
       status, status_label, assessment, preview, unread, source, interest,
-      list_group, sort_order, just_arrived
-    ) VALUES (?, ?, ?, ?, ?, 'now', 'new', 'New', 'New inbound SMS', ?, 1, ?, 'Unknown', 'today', 0, 1)`
+      list_group, sort_order, just_arrived, location_confirmed
+    ) VALUES (?, ?, ?, ?, ?, ?, 'new', 'New', 'New inbound SMS', ?, 1, ?, 'Unknown', 'today', 0, 1, ?)`
   )
     .bind(
       leadId,
@@ -181,18 +179,22 @@ export async function processInboundSms(
       locationId,
       displayName,
       phone,
+      nowTimeLabel(),
       preview,
-      source
+      source,
+      locationConfirmed ? 1 : 0
     )
     .run();
 
+  const now = nowTimeLabel();
   await env.DB.prepare(
     `INSERT INTO timeline_events (id, lead_id, sort_order, time_label, parts_json)
-     VALUES (?, ?, 0, 'now', ?)`
+     VALUES (?, ?, 0, ?, ?)`
   )
     .bind(
       crypto.randomUUID(),
       leadId,
+      now,
       JSON.stringify([{ bold: "New lead", text: ` · ${source}` }])
     )
     .run();
@@ -206,7 +208,7 @@ export async function processInboundSms(
     kind: "chat",
     from: "lead",
     text,
-    time: "now",
+    time: now,
   });
 
   const lead = await getLead(env, leadId);

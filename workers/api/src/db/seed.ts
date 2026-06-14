@@ -7,7 +7,7 @@ import type { Lead, Message } from "@lead-intake/shared-types";
 import type { Env } from "../env";
 import { countLeads } from "./leads";
 
-// TODO: update the org name to match the client (used in DB only; display name comes from ai_config)
+// TODO: set the org display name (used in DB only; AI-facing name comes from ai_config)
 const ORG_NAME = "TODO: Client Name";
 
 function groupKeyForLeadId(id: string): string {

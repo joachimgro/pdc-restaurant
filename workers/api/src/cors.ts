@@ -26,6 +26,7 @@ export function corsHeaders(
     "Access-Control-Allow-Headers",
     "Content-Type, Authorization, Last-Event-ID"
   );
+  h.set("Access-Control-Allow-Credentials", "true");
   h.set("Access-Control-Max-Age", "86400");
   h.set("Vary", "Origin");
   return h;

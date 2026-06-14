@@ -23,8 +23,8 @@ CREATE TABLE IF NOT EXISTS ai_ingest_meta (
 );
 
 -- AI config is seeded via the Admin panel or via /admin/seed (when ENABLE_DEMO_TOOLS=true).
--- To bootstrap a new client, use the Admin panel → AI Config after first deploy,
--- or add INSERT OR IGNORE rows below if you prefer migration-based seeding.
+-- To bootstrap a new client, use the Admin panel -> AI Config after first deploy,
+-- or add an INSERT OR IGNORE row below if you prefer migration-based seeding.
 --
 -- Example (uncomment and fill in):
 -- INSERT OR IGNORE INTO ai_config (

@@ -1,8 +1,10 @@
 import { handleQueueBatch } from "./queue/consumer";
 import { optionsResponse, jsonResponse } from "./cors";
 import { handleAdminResetAll, handleAdminSeed } from "./routes/admin";
-import { handleListLeads, handleGetLead, handleSelectLead, handleTakeover, handleSimulateNewLead, handleDeleteLead } from "./routes/leads";
+import { handleListLeads, handleGetLead, handleSelectLead, handleTakeover, handleResumeAi, handleSimulateNewLead, handleDeleteLead, handleSendStaffMessage, handleAddLeadNote } from "./routes/leads";
 import { handleEventStream } from "./routes/events";
+import { getStaffSession } from "./auth/session";
+import { handleMagicLink, handleVerify, handleLogout, handleMe, handleUpdateProfile, handleListTeam, handleInviteTeam } from "./routes/auth";
 import { handleTelnyxWebhook } from "./routes/webhooks";
 import { handleTwilioInbound, handleTwilioStatus } from "./routes/twilio";
 import { handleTwilioCheck } from "./routes/twilio-admin";
@@ -26,18 +28,6 @@ import {
   handleSyncLocationSchedules,
   handleUpdateLocation,
 } from "./routes/locations-admin";
-import {
-  handleMagicLinkRequest,
-  handleMagicLinkVerify,
-  handleLogout,
-  handleMe,
-} from "./routes/auth";
-import {
-  handleListAdmins,
-  handleAddAdmin,
-  handleRemoveAdmin,
-} from "./routes/admins";
-import { requireAuth } from "./auth/middleware";
 import type { Env, QueueMessage } from "./env";
 
 export default {
@@ -46,19 +36,83 @@ export default {
 
     const url = new URL(request.url);
     const path = url.pathname;
-    const method = request.method;
 
     try {
+      // ── Public (unauthenticated) endpoints ──────────────────────────────
+      // Everything else requires a valid staff session cookie. /auth/* routes
+      // are listed as public because they manage their own session checks
+      // internally (and magic-link/verify must be reachable while logged out).
+      const isPublic =
+        path === "/health" ||
+        (path === "/leads/intake" && request.method === "POST") ||
+        path.startsWith("/auth/") ||
+        path.startsWith("/webhooks/");
+
+      if (!isPublic) {
+        const session = await getStaffSession(env, request);
+        if (!session) {
+          return jsonResponse(request, env, { error: "Unauthorized" }, 401);
+        }
+      }
+
       if (path === "/health") {
         return jsonResponse(request, env, { ok: true });
       }
 
-      // ── Public routes: intake form and webhooks ───────────────────────────
-      if (path === "/leads/intake" && method === "POST") {
-        return handleIntakeSubmit(request, env);
+      if (path === "/admin/seed" && request.method === "POST") {
+        if (env.ENABLE_DEMO_TOOLS !== "true") {
+          return jsonResponse(request, env, { error: "Demo tools disabled" }, 403);
+        }
+        return handleAdminSeed(request, env);
       }
 
-      if (path === "/locations" && method === "GET") {
+      if (path === "/admin/reset-all" && request.method === "POST") {
+        if (env.ENABLE_DEMO_TOOLS !== "true") {
+          return jsonResponse(request, env, { error: "Demo tools disabled" }, 403);
+        }
+        return handleAdminResetAll(request, env);
+      }
+
+      if (path === "/admin/twilio-check" && request.method === "GET") {
+        return handleTwilioCheck(request, env);
+      }
+
+      if (path === "/admin/ai-config" && request.method === "GET") {
+        return handleAiConfig(request, env);
+      }
+
+      if (path === "/admin/ai-status" && request.method === "GET") {
+        return handleAiStatus(request, env);
+      }
+
+      if (path === "/admin/ingest-knowledge" && request.method === "POST") {
+        return handleIngestKnowledge(request, env);
+      }
+
+      if (path === "/admin/knowledge" && request.method === "GET") {
+        return handleListKnowledge(request, env);
+      }
+
+      if (path === "/admin/knowledge" && request.method === "POST") {
+        return handleCreateKnowledge(request, env);
+      }
+
+      if (path === "/admin/knowledge/reindex" && request.method === "POST") {
+        return handleReindexKnowledge(request, env);
+      }
+
+      if (path === "/admin/knowledge/preview" && request.method === "POST") {
+        return handlePreviewKnowledge(request, env);
+      }
+
+      const knowledgeDeleteMatch = path.match(
+        /^\/admin\/knowledge\/([^/]+)$/
+      );
+      if (knowledgeDeleteMatch && request.method === "DELETE") {
+        return handleDeleteKnowledge(request, env, knowledgeDeleteMatch[1]);
+      }
+
+      if (path === "/locations" && request.method === "GET") {
         const { results } = await env.DB.prepare(
           `SELECT id, name, abbrev, badge_count FROM locations WHERE organization_id = ?`
         )
@@ -67,164 +121,122 @@ export default {
         return jsonResponse(request, env, { locations: results ?? [] });
       }
 
-      if (path === "/webhooks/telnyx" && method === "POST") {
-        return handleTelnyxWebhook(request, env);
-      }
-
-      if (path === "/webhooks/twilio" && method === "POST") {
-        return handleTwilioInbound(request, env);
-      }
-
-      if (path === "/webhooks/twilio/status" && method === "POST") {
-        return handleTwilioStatus(request, env);
-      }
-
-      // ── Auth routes (public — no session required) ────────────────────────
-      if (path === "/auth/magic-link" && method === "POST") {
-        return handleMagicLinkRequest(request, env);
-      }
-
-      if (path === "/auth/verify" && method === "POST") {
-        return handleMagicLinkVerify(request, env);
-      }
-
-      if (path === "/auth/logout" && method === "POST") {
-        return handleLogout(request, env);
-      }
-
-      if (path === "/auth/me" && method === "GET") {
-        return handleMe(request, env);
-      }
-
-      // ── Everything below requires a valid session ─────────────────────────
-      const auth = await requireAuth(request, env);
-      if (auth instanceof Response) return auth;
-
-      // ── Demo-only tools (additionally gated by ENABLE_DEMO_TOOLS) ─────────
-      if (path === "/admin/seed" && method === "POST") {
-        if (env.ENABLE_DEMO_TOOLS !== "true") {
-          return jsonResponse(request, env, { error: "Demo tools are disabled" }, 403);
-        }
-        return handleAdminSeed(request, env);
-      }
-
-      if (path === "/admin/reset-all" && method === "POST") {
-        if (env.ENABLE_DEMO_TOOLS !== "true") {
-          return jsonResponse(request, env, { error: "Demo tools are disabled" }, 403);
-        }
-        return handleAdminResetAll(request, env);
-      }
-
-      if (path === "/leads/simulate" && method === "POST") {
-        if (env.ENABLE_DEMO_TOOLS !== "true") {
-          return jsonResponse(request, env, { error: "Demo tools are disabled" }, 403);
-        }
-        return handleSimulateNewLead(request, env);
-      }
-
-      // ── Admin management ──────────────────────────────────────────────────
-      if (path === "/admin/admins" && method === "GET") {
-        return handleListAdmins(request, env);
-      }
-
-      if (path === "/admin/admins" && method === "POST") {
-        return handleAddAdmin(request, env, auth.email);
-      }
-
-      const adminEmailMatch = path.match(/^\/admin\/admins\/([^/]+)$/);
-      if (adminEmailMatch && method === "DELETE") {
-        return handleRemoveAdmin(request, env, decodeURIComponent(adminEmailMatch[1]));
-      }
-
-      // ── Twilio admin ──────────────────────────────────────────────────────
-      if (path === "/admin/twilio-check" && method === "GET") {
-        return handleTwilioCheck(request, env);
-      }
-
-      // ── AI admin ──────────────────────────────────────────────────────────
-      if (path === "/admin/ai-config" && method === "GET") {
-        return handleAiConfig(request, env);
-      }
-
-      if (path === "/admin/ai-status" && method === "GET") {
-        return handleAiStatus(request, env);
-      }
-
-      if (path === "/admin/ingest-knowledge" && method === "POST") {
-        return handleIngestKnowledge(request, env);
-      }
-
-      // ── Knowledge admin ───────────────────────────────────────────────────
-      if (path === "/admin/knowledge" && method === "GET") {
-        return handleListKnowledge(request, env);
-      }
-
-      if (path === "/admin/knowledge" && method === "POST") {
-        return handleCreateKnowledge(request, env);
-      }
-
-      if (path === "/admin/knowledge/reindex" && method === "POST") {
-        return handleReindexKnowledge(request, env);
-      }
-
-      if (path === "/admin/knowledge/preview" && method === "POST") {
-        return handlePreviewKnowledge(request, env);
-      }
-
-      const knowledgeDeleteMatch = path.match(/^\/admin\/knowledge\/([^/]+)$/);
-      if (knowledgeDeleteMatch && method === "DELETE") {
-        return handleDeleteKnowledge(request, env, knowledgeDeleteMatch[1]);
-      }
-
-      // ── Locations admin ───────────────────────────────────────────────────
-      if (path === "/admin/locations" && method === "GET") {
+      if (path === "/admin/locations" && request.method === "GET") {
         return handleListAdminLocations(request, env);
       }
 
-      if (path === "/admin/locations" && method === "POST") {
+      if (path === "/admin/locations" && request.method === "POST") {
         return handleCreateLocation(request, env);
       }
 
       const adminLocMatch = path.match(/^\/admin\/locations\/([^/]+)$/);
-      if (adminLocMatch && method === "PUT") {
+      if (adminLocMatch && request.method === "PUT") {
         return handleUpdateLocation(request, env, adminLocMatch[1]);
       }
 
-      const adminSchedMatch = path.match(/^\/admin\/locations\/([^/]+)\/schedules$/);
-      if (adminSchedMatch && method === "PUT") {
+      const adminSchedMatch = path.match(
+        /^\/admin\/locations\/([^/]+)\/schedules$/
+      );
+      if (adminSchedMatch && request.method === "PUT") {
         return handlePutLocationSchedules(request, env, adminSchedMatch[1]);
       }
 
-      const adminSyncMatch = path.match(/^\/admin\/locations\/([^/]+)\/sync-schedules$/);
-      if (adminSyncMatch && method === "POST") {
+      const adminSyncMatch = path.match(
+        /^\/admin\/locations\/([^/]+)\/sync-schedules$/
+      );
+      if (adminSyncMatch && request.method === "POST") {
         return handleSyncLocationSchedules(request, env, adminSyncMatch[1]);
       }
 
-      // ── Leads ─────────────────────────────────────────────────────────────
-      if (path === "/leads" && method === "GET") {
+      if (path === "/leads" && request.method === "GET") {
         return handleListLeads(request, env);
       }
 
-      // SSE stream — token can be passed as ?token= query param (EventSource limitation)
-      if (path === "/events/stream" && method === "GET") {
+      if (path === "/leads/simulate" && request.method === "POST") {
+        if (env.ENABLE_DEMO_TOOLS !== "true") {
+          return jsonResponse(request, env, { error: "Demo tools disabled" }, 403);
+        }
+        return handleSimulateNewLead(request, env);
+      }
+
+      if (path === "/leads/intake" && request.method === "POST") {
+        return handleIntakeSubmit(request, env);
+      }
+
+      if (path === "/events/stream" && request.method === "GET") {
         return handleEventStream(request, env);
       }
 
+      if (path === "/auth/magic-link" && request.method === "POST") {
+        return handleMagicLink(request, env);
+      }
+
+      if (path === "/auth/verify" && request.method === "GET") {
+        return handleVerify(request, env);
+      }
+
+      if (path === "/auth/logout" && request.method === "POST") {
+        return handleLogout(request, env);
+      }
+
+      if (path === "/auth/me" && request.method === "GET") {
+        return handleMe(request, env);
+      }
+
+      if (path === "/auth/profile" && request.method === "PATCH") {
+        return handleUpdateProfile(request, env);
+      }
+
+      if (path === "/auth/team" && request.method === "GET") {
+        return handleListTeam(request, env);
+      }
+
+      if (path === "/auth/team/invite" && request.method === "POST") {
+        return handleInviteTeam(request, env);
+      }
+
+      if (path === "/webhooks/telnyx" && request.method === "POST") {
+        return handleTelnyxWebhook(request, env);
+      }
+
+      if (path === "/webhooks/twilio" && request.method === "POST") {
+        return handleTwilioInbound(request, env);
+      }
+
+      if (path === "/webhooks/twilio/status" && request.method === "POST") {
+        return handleTwilioStatus(request, env);
+      }
+
+      const notesMatch = path.match(/^\/leads\/([^/]+)\/notes$/);
+      if (notesMatch && request.method === "POST") {
+        return handleAddLeadNote(request, env, notesMatch[1]);
+      }
+
+      const staffMsgMatch = path.match(/^\/leads\/([^/]+)\/messages$/);
+      if (staffMsgMatch && request.method === "POST") {
+        return handleSendStaffMessage(request, env, staffMsgMatch[1]);
+      }
+
       const selectMatch = path.match(/^\/leads\/([^/]+)\/select$/);
-      if (selectMatch && method === "POST") {
+      if (selectMatch && request.method === "POST") {
         return handleSelectLead(request, env, selectMatch[1]);
       }
 
       const takeoverMatch = path.match(/^\/leads\/([^/]+)\/takeover$/);
-      if (takeoverMatch && method === "POST") {
+      if (takeoverMatch && request.method === "POST") {
         return handleTakeover(request, env, takeoverMatch[1]);
       }
 
+      const resumeAiMatch = path.match(/^\/leads\/([^/]+)\/resume-ai$/);
+      if (resumeAiMatch && request.method === "POST") {
+        return handleResumeAi(request, env, resumeAiMatch[1]);
+      }
+
       const leadMatch = path.match(/^\/leads\/([^/]+)$/);
-      if (leadMatch && method === "GET") {
+      if (leadMatch && request.method === "GET") {
         return handleGetLead(request, env, leadMatch[1]);
       }
-      if (leadMatch && method === "DELETE") {
+      if (leadMatch && request.method === "DELETE") {
         return handleDeleteLead(request, env, leadMatch[1]);
       }
 
