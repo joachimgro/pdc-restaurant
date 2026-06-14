@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import type { StaffUser } from "@lead-intake/shared-types";
 import { logoutAuth } from "@/lib/api/client";
+import { getPlugins } from "@/plugins/registry";
 import type { AppSection } from "./app-section";
 import { IconBook, IconInbox, IconSearch, IconSettings } from "./icons";
 
@@ -16,6 +17,9 @@ export function NavRail({
   onSectionChange: (section: AppSection) => void;
 }) {
   const router = useRouter();
+  const allPlugins = getPlugins();
+  const topPlugins = allPlugins.filter((p) => p.railPosition === "top");
+  const bottomPlugins = allPlugins.filter((p) => p.railPosition === "bottom");
 
   async function handleLogout() {
     await logoutAuth();
@@ -34,6 +38,21 @@ export function NavRail({
       >
         <IconInbox />
       </button>
+      {/* Plugin nav items — top position */}
+      {topPlugins.map((plugin) => {
+        const Icon = plugin.Icon;
+        return (
+          <button
+            key={plugin.id}
+            type="button"
+            className={`rail-icon ${activeSection === plugin.id ? "active" : ""}`}
+            title={plugin.label}
+            onClick={() => onSectionChange(plugin.id)}
+          >
+            <Icon />
+          </button>
+        );
+      })}
       <div className="rail-bottom">
         {staffUser && (
           <button
@@ -61,6 +80,21 @@ export function NavRail({
         >
           <IconBook />
         </button>
+        {/* Plugin nav items — bottom position */}
+        {bottomPlugins.map((plugin) => {
+          const Icon = plugin.Icon;
+          return (
+            <button
+              key={plugin.id}
+              type="button"
+              className={`rail-icon ${activeSection === plugin.id ? "active" : ""}`}
+              title={plugin.label}
+              onClick={() => onSectionChange(plugin.id)}
+            >
+              <Icon />
+            </button>
+          );
+        })}
         <button
           type="button"
           className={`rail-icon ${activeSection === "settings" ? "active" : ""}`}

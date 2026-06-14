@@ -1,8 +1,10 @@
 "use client";
 
+import "@/plugins/index"; // Load plugin registry — must be first
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import type { StaffUser } from "@lead-intake/shared-types";
+import { getPlugin } from "@/plugins/registry";
 import { fetchAuthMe } from "@/lib/api/client";
 import { useInboxStore } from "@/store/inbox-store";
 import { KnowledgeWorkspace } from "./KnowledgeWorkspace";
@@ -141,6 +143,13 @@ export function InboxPage() {
             />
           )}
           {section === "knowledge" && <KnowledgeWorkspace />}
+          {/* Plugin workspaces */}
+          {(() => {
+            const plugin = getPlugin(section);
+            if (!plugin) return null;
+            const Workspace = plugin.Workspace;
+            return <Workspace />;
+          })()}
         </div>
       </div>
     </>
