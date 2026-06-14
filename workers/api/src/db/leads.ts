@@ -276,24 +276,30 @@ export async function setLeadJustArrived(
     .run();
 }
 
-export async function updateLeadFields(
-  env: Env,
+export type LeadFieldUpdates = Partial<{
+  preview: string;
+  assessment: string;
+  status: string;
+  statusLabel: string;
+  unread: boolean;
+  aiPaused: boolean;
+  locationId: string;
+  locationConfirmed: boolean;
+  trialSlot: string | null;
+  trialSlotLabel: string | null;
+  trialProposedJson: string | null;
+  trialConfirmedAt: string | null;
+}>;
+
+/**
+ * Build the UPDATE statement for lead field changes without running it,
+ * so it can be included in an atomic `env.DB.batch([...])`.
+ */
+export function buildLeadUpdateStatement(
+  db: D1Database,
   id: string,
-  fields: Partial<{
-    preview: string;
-    assessment: string;
-    status: string;
-    statusLabel: string;
-    unread: boolean;
-    aiPaused: boolean;
-    locationId: string;
-    locationConfirmed: boolean;
-    trialSlot: string | null;
-    trialSlotLabel: string | null;
-    trialProposedJson: string | null;
-    trialConfirmedAt: string | null;
-  }>
-): Promise<void> {
+  fields: LeadFieldUpdates
+): D1PreparedStatement {
   const sets: string[] = ["updated_at = datetime('now')"];
   const binds: unknown[] = [];
 
@@ -347,11 +353,94 @@ export async function updateLeadFields(
   }
 
   binds.push(id);
-  await env.DB.prepare(
-    `UPDATE leads SET ${sets.join(", ")} WHERE id = ?`
-  )
-    .bind(...binds)
-    .run();
+  return db.prepare(`UPDATE leads SET ${sets.join(", ")} WHERE id = ?`).bind(...binds);
+}
+
+export async function updateLeadFields(
+  env: Env,
+  id: string,
+  fields: LeadFieldUpdates
+): Promise<void> {
+  await buildLeadUpdateStatement(env.DB, id, fields).run();
+}
+
+/**
+ * Build the INSERT statement(s) for a message without running them, so they
+ * can be included in an atomic `env.DB.batch([...])`. Returns the generated
+ * message id plus the ordered statements (chat messages with reasoning produce
+ * two statements).
+ */
+export function buildMessageStatements(
+  db: D1Database,
+  leadId: string,
+  sortOrder: number,
+  message: Message
+): { id: string; statements: D1PreparedStatement[] } {
+  const id = crypto.randomUUID();
+
+  if (message.kind === "day") {
+    return {
+      id,
+      statements: [
+        db
+          .prepare(
+            `INSERT INTO messages (id, lead_id, sort_order, kind, day_label)
+             VALUES (?, ?, ?, 'day', ?)`
+          )
+          .bind(id, leadId, sortOrder, message.day),
+      ],
+    };
+  }
+
+  if (message.kind === "auto_followup") {
+    return {
+      id,
+      statements: [
+        db
+          .prepare(
+            `INSERT INTO messages (id, lead_id, sort_order, kind, auto_followup_label)
+             VALUES (?, ?, ?, 'auto_followup', ?)`
+          )
+          .bind(id, leadId, sortOrder, message.label),
+      ],
+    };
+  }
+
+  const statements: D1PreparedStatement[] = [
+    db
+      .prepare(
+        `INSERT INTO messages (id, lead_id, sort_order, kind, from_role, body, time_label, staff_user_id, staff_author_name)
+         VALUES (?, ?, ?, 'chat', ?, ?, ?, ?, ?)`
+      )
+      .bind(
+        id,
+        leadId,
+        sortOrder,
+        message.from,
+        message.text,
+        message.time,
+        message.staffUserId ?? null,
+        message.staffAuthorName ?? null
+      ),
+  ];
+
+  if (message.reasoning) {
+    statements.push(
+      db
+        .prepare(
+          `INSERT INTO message_reasoning (message_id, verdict, stage, note)
+           VALUES (?, ?, ?, ?)`
+        )
+        .bind(
+          id,
+          message.reasoning.verdict,
+          message.reasoning.stage,
+          message.reasoning.note
+        )
+    );
+  }
+
+  return { id, statements };
 }
 
 export async function insertMessage(
@@ -360,62 +449,8 @@ export async function insertMessage(
   sortOrder: number,
   message: Message
 ): Promise<string> {
-  const id = crypto.randomUUID();
-
-  if (message.kind === "day") {
-    await db
-      .prepare(
-        `INSERT INTO messages (id, lead_id, sort_order, kind, day_label)
-         VALUES (?, ?, ?, 'day', ?)`
-      )
-      .bind(id, leadId, sortOrder, message.day)
-      .run();
-    return id;
-  }
-
-  if (message.kind === "auto_followup") {
-    await db
-      .prepare(
-        `INSERT INTO messages (id, lead_id, sort_order, kind, auto_followup_label)
-         VALUES (?, ?, ?, 'auto_followup', ?)`
-      )
-      .bind(id, leadId, sortOrder, message.label)
-      .run();
-    return id;
-  }
-
-  await db
-    .prepare(
-      `INSERT INTO messages (id, lead_id, sort_order, kind, from_role, body, time_label, staff_user_id, staff_author_name)
-       VALUES (?, ?, ?, 'chat', ?, ?, ?, ?, ?)`
-    )
-    .bind(
-      id,
-      leadId,
-      sortOrder,
-      message.from,
-      message.text,
-      message.time,
-      message.staffUserId ?? null,
-      message.staffAuthorName ?? null
-    )
-    .run();
-
-  if (message.reasoning) {
-    await db
-      .prepare(
-        `INSERT INTO message_reasoning (message_id, verdict, stage, note)
-         VALUES (?, ?, ?, ?)`
-      )
-      .bind(
-        id,
-        message.reasoning.verdict,
-        message.reasoning.stage,
-        message.reasoning.note
-      )
-      .run();
-  }
-
+  const { id, statements } = buildMessageStatements(db, leadId, sortOrder, message);
+  for (const s of statements) await s.run();
   return id;
 }
 

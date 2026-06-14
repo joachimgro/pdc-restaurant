@@ -40,7 +40,8 @@ export async function runHumanBookingFlow(
       await ensureLeadProgramme(env, leadId, lead, { history });
       const refreshed = (await getLead(env, leadId)) ?? lead;
       const reply = buildConfirmReply(refreshed, loose, { history });
-      await confirmTrial(env, leadId, loose, { history });
+      const res = await confirmTrial(env, leadId, loose, { history });
+      if (res.alreadyConfirmed) reply.skipSms = true;
       return reply;
     }
     return null;
@@ -59,7 +60,8 @@ export async function runHumanBookingFlow(
       schedule,
       history,
     });
-    await confirmTrial(env, leadId, affirmativeChoice, { schedule, history });
+    const res = await confirmTrial(env, leadId, affirmativeChoice, { schedule, history });
+    if (res.alreadyConfirmed) reply.skipSms = true;
     return reply;
   }
 
@@ -74,7 +76,8 @@ export async function runHumanBookingFlow(
       schedule,
       history,
     });
-    await confirmTrial(env, leadId, lead.trialProposed, { schedule, history });
+    const res = await confirmTrial(env, leadId, lead.trialProposed, { schedule, history });
+    if (res.alreadyConfirmed) reply.skipSms = true;
     return reply;
   }
 
@@ -102,7 +105,8 @@ export async function runHumanBookingFlow(
       schedule,
       history,
     });
-    await confirmTrial(env, leadId, choice, { schedule, history });
+    const res = await confirmTrial(env, leadId, choice, { schedule, history });
+    if (res.alreadyConfirmed) reply.skipSms = true;
     return reply;
   }
 

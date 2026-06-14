@@ -42,14 +42,21 @@ type ConfirmTrialOpts = {
   history?: { role: string; text: string }[];
 };
 
+export interface ConfirmTrialResult {
+  confirmed: boolean;
+  /** True when the lead already had a confirmed trial — caller must not send a duplicate "you're booked" SMS. */
+  alreadyConfirmed: boolean;
+  existingSlotLabel?: string;
+}
+
 export async function confirmTrial(
   env: Env,
   leadId: string,
   proposal: TrialProposal,
   opts?: ConfirmTrialOpts
-): Promise<void> {
+): Promise<ConfirmTrialResult> {
   let lead = await getLead(env, leadId);
-  if (!lead) return;
+  if (!lead) return { confirmed: false, alreadyConfirmed: false };
 
   await ensureLeadProgramme(env, leadId, lead, opts);
   lead = (await getLead(env, leadId)) ?? lead;
@@ -59,16 +66,37 @@ export async function confirmTrial(
   const preview = `Free trial · ${proposal.label} · ${lead.location}`;
   const now = new Date().toISOString();
 
-  await updateLeadFields(env, leadId, {
-    assessment,
-    preview,
-    status: "booked",
-    statusLabel: "Booked",
-    trialSlot: proposal.slotId,
-    trialSlotLabel: proposal.label,
-    trialProposedJson: JSON.stringify(proposal),
-    trialConfirmedAt: now,
-  });
+  // Guarded UPDATE: only confirms when no trial is already confirmed.
+  // Two concurrent affirmatives can't both win — the second sees changes === 0.
+  const result = await env.DB.prepare(
+    `UPDATE leads
+     SET assessment = ?, preview = ?, status = 'booked', status_label = 'Booked',
+         trial_slot = ?, trial_slot_label = ?, trial_proposed_json = ?,
+         trial_confirmed_at = ?, updated_at = datetime('now')
+     WHERE id = ? AND organization_id = ? AND trial_confirmed_at IS NULL`
+  )
+    .bind(
+      assessment,
+      preview,
+      proposal.slotId,
+      proposal.label,
+      JSON.stringify(proposal),
+      now,
+      leadId,
+      env.ORGANIZATION_ID
+    )
+    .run();
+
+  if ((result.meta.changes ?? 0) === 0) {
+    console.warn(
+      `[${env.ORGANIZATION_ID}] Trial confirm attempted on already-confirmed lead ${leadId}. Using existing slot.`
+    );
+    return {
+      confirmed: false,
+      alreadyConfirmed: true,
+      existingSlotLabel: lead.trialSlotLabel,
+    };
+  }
 
   await env.DB.prepare(
     `INSERT INTO timeline_events (id, lead_id, sort_order, time_label, parts_json)
@@ -105,4 +133,6 @@ export async function confirmTrial(
       },
     },
   });
+
+  return { confirmed: true, alreadyConfirmed: false };
 }

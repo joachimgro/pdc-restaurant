@@ -226,16 +226,18 @@ export async function generateAiReply(
     );
     if (choice) {
       if (isAffirmativeBooking(inboundText)) {
-        await confirmTrial(env, leadId, choice, {
+        const res = await confirmTrial(env, leadId, choice, {
           schedule: dbSchedule,
           history: ctx.history,
         });
         const refreshed = (await getLead(env, leadId)) ?? ctx.lead;
-        return buildConfirmReply(refreshed, choice, {
+        const reply = buildConfirmReply(refreshed, choice, {
           enthusiastic: isSoftAffirmation(inboundText),
           schedule: dbSchedule,
           history: ctx.history,
         });
+        if (res.alreadyConfirmed) reply.skipSms = true;
+        return reply;
       }
       await proposeTrial(env, leadId, choice);
       const refreshed = (await getLead(env, leadId)) ?? ctx.lead;
@@ -459,15 +461,17 @@ export async function generateAiReply(
         dbSchedule
       );
       if (slot) {
-        await confirmTrial(env, leadId, slot, {
+        const res = await confirmTrial(env, leadId, slot, {
           schedule: dbSchedule,
           history: ctx.history,
         });
         const refreshed = (await getLead(env, leadId)) ?? ctx.lead;
-        return buildConfirmReply(refreshed, slot, {
+        const reply = buildConfirmReply(refreshed, slot, {
           schedule: dbSchedule,
           history: ctx.history,
         });
+        if (res.alreadyConfirmed) reply.skipSms = true;
+        return reply;
       }
     }
 
@@ -487,16 +491,18 @@ export async function generateAiReply(
         );
       if (slot) {
           if (bookingIntent === "confirm") {
-            await confirmTrial(env, leadId, slot, {
+            const res = await confirmTrial(env, leadId, slot, {
               schedule: dbSchedule,
               history: ctx.history,
             });
             const refreshed = (await getLead(env, leadId)) ?? ctx.lead;
             if (replyUsesWrongProgramme(finalText, ctx.lead)) {
-              return buildConfirmReply(refreshed, slot, {
+              const reply = buildConfirmReply(refreshed, slot, {
                 schedule: dbSchedule,
                 history: ctx.history,
               });
+              if (res.alreadyConfirmed) reply.skipSms = true;
+              return reply;
             }
             const bookedText = applyTemplateTokens(finalText, refreshed, scheduleLine);
             return {
@@ -504,7 +510,7 @@ export async function generateAiReply(
               smsText: judged.smsText
                 ? applyTemplateTokens(judged.smsText, refreshed, scheduleLine)
                 : bookedText,
-              skipSms: judged.skipSms,
+              skipSms: judged.skipSms || res.alreadyConfirmed,
               reasoning: {
                 ...judged.reasoning,
                 note: `${judged.reasoning.note} [booking confirmed from LLM reply]`,

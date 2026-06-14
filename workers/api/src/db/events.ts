@@ -1,23 +1,36 @@
 import type { DomainEvent } from "@lead-intake/shared-types";
 import type { Env } from "../env";
 
+/**
+ * Build the prepared statement for a domain event without running it.
+ * Lets callers include event writes inside an atomic `env.DB.batch([...])`.
+ */
+export function domainEventStatement(
+  db: D1Database,
+  orgId: string,
+  event: Omit<DomainEvent, "id" | "createdAt"> & { id?: string }
+): { statement: D1PreparedStatement; full: DomainEvent } {
+  const id = event.id ?? crypto.randomUUID();
+  const createdAt = new Date().toISOString();
+  const full = { ...event, id, createdAt } as DomainEvent;
+
+  const statement = db
+    .prepare(
+      `INSERT INTO domain_events (id, organization_id, type, payload_json, created_at)
+       VALUES (?, ?, ?, ?, ?)`
+    )
+    .bind(id, orgId, full.type, JSON.stringify(full), createdAt);
+
+  return { statement, full };
+}
+
 export async function insertDomainEvent(
   db: D1Database,
   orgId: string,
   event: Omit<DomainEvent, "id" | "createdAt"> & { id?: string }
 ): Promise<DomainEvent> {
-  const id = event.id ?? crypto.randomUUID();
-  const createdAt = new Date().toISOString();
-  const full = { ...event, id, createdAt } as DomainEvent;
-
-  await db
-    .prepare(
-      `INSERT INTO domain_events (id, organization_id, type, payload_json, created_at)
-       VALUES (?, ?, ?, ?, ?)`
-    )
-    .bind(id, orgId, full.type, JSON.stringify(full), createdAt)
-    .run();
-
+  const { statement, full } = domainEventStatement(db, orgId, event);
+  await statement.run();
   return full;
 }
 

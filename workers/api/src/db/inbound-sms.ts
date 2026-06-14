@@ -1,12 +1,16 @@
-import { insertDomainEvent } from "./events";
+import { domainEventStatement, insertDomainEvent } from "./events";
 import {
+  buildLeadUpdateStatement,
+  buildMessageStatements,
   getLead,
-  insertMessage,
   nextMessageSortOrder,
   nowTimeLabel,
-  updateLeadFields,
 } from "./leads";
 import { getDefaultLocation } from "./locations";
+import {
+  deleteWebhookDelivery,
+  recordWebhookDelivery,
+} from "./webhook-deliveries";
 import type { Env } from "../env";
 import { canonicalPhone, phoneDigitSuffix } from "./phone-utils";
 
@@ -59,13 +63,17 @@ export async function processInboundSms(
     };
   }
 
-  const dup = await env.DB.prepare(
-    `SELECT 1 FROM webhook_deliveries WHERE provider = ? AND external_id = ?`
-  )
-    .bind(input.provider, input.externalId)
-    .first();
+  // Channel-agnostic idempotency gate (INSERT OR IGNORE — no SELECT-then-INSERT race).
+  const { isDuplicate } = await recordWebhookDelivery(
+    env,
+    input.provider,
+    input.externalId
+  );
 
-  if (dup) {
+  if (isDuplicate) {
+    console.warn(
+      `[${env.ORGANIZATION_ID}] Duplicate webhook ${input.provider}:${input.externalId} — skipping`
+    );
     const existing = await env.DB.prepare(
       `SELECT id FROM leads WHERE phone = ? AND organization_id = ?`
     )
@@ -83,12 +91,6 @@ export async function processInboundSms(
       skipped: true,
     };
   }
-
-  await env.DB.prepare(
-    `INSERT INTO webhook_deliveries (id, provider, external_id) VALUES (?, ?, ?)`
-  )
-    .bind(crypto.randomUUID(), input.provider, input.externalId)
-    .run();
 
   const preview =
     text.length > 56 ? text.slice(0, 53) + "..." : text;
@@ -131,31 +133,37 @@ export async function processInboundSms(
       .bind(leadId)
       .first();
 
+    const msgTime = nowTimeLabel();
+
+    // Atomic group: optional day divider + inbound message + lead update + events.
+    const statements: D1PreparedStatement[] = [];
     let order = sortOrder;
     if (!hasDay) {
-      await insertMessage(env.DB, leadId, order++, {
+      const day = buildMessageStatements(env.DB, leadId, order++, {
         kind: "day",
         day: "Today, just now",
       });
+      statements.push(...day.statements);
     }
 
-    const msgTime = nowTimeLabel();
-    const messageId = await insertMessage(env.DB, leadId, order, {
+    const chat = buildMessageStatements(env.DB, leadId, order, {
       kind: "chat",
       from: "lead",
       text,
       time: msgTime,
     });
+    const messageId = chat.id;
+    statements.push(...chat.statements);
 
-    await updateLeadFields(env, leadId, {
-      preview,
-      unread: true,
-      assessment: "New message — AI responding",
-    });
-
-    const lead = await getLead(env, leadId);
-    if (lead) {
-      await insertDomainEvent(env.DB, env.ORGANIZATION_ID, {
+    statements.push(
+      buildLeadUpdateStatement(env.DB, leadId, {
+        preview,
+        unread: true,
+        assessment: "New message — AI responding",
+      })
+    );
+    statements.push(
+      domainEventStatement(env.DB, env.ORGANIZATION_ID, {
         type: "message.created",
         payload: {
           leadId,
@@ -167,11 +175,23 @@ export async function processInboundSms(
             time: msgTime,
           },
         },
-      });
-      await insertDomainEvent(env.DB, env.ORGANIZATION_ID, {
+      }).statement
+    );
+    statements.push(
+      domainEventStatement(env.DB, env.ORGANIZATION_ID, {
         type: "lead.updated",
         payload: { leadId, patch: { preview, unread: true } },
-      });
+      }).statement
+    );
+
+    try {
+      await env.DB.batch(statements);
+    } catch (e) {
+      // Un-record the delivery so the provider's retry re-processes cleanly.
+      await deleteWebhookDelivery(env, input.provider, input.externalId).catch(
+        () => {}
+      );
+      throw e;
     }
 
     return { leadId, isNew: false, messageId };
@@ -213,46 +233,74 @@ export async function processInboundSms(
     .first<{ id: string }>();
 
   if (winner && winner.id !== leadId) {
-    // Another request already created this lead — treat as existing
+    // Another request already created this lead — treat as existing.
     console.warn(
       `Inbound SMS race: lead already exists for ${phone} in org ${env.ORGANIZATION_ID}. Routing to existing lead ${winner.id}.`
     );
     const sortOrder = await nextMessageSortOrder(env.DB, winner.id);
     const msgTime = nowTimeLabel();
-    const messageId = await insertMessage(env.DB, winner.id, sortOrder, {
+    const chat = buildMessageStatements(env.DB, winner.id, sortOrder, {
       kind: "chat",
       from: "lead",
       text,
       time: msgTime,
     });
-    await updateLeadFields(env, winner.id, { preview, unread: true });
-    return { leadId: winner.id, isNew: false, messageId };
+    try {
+      await env.DB.batch([
+        ...chat.statements,
+        buildLeadUpdateStatement(env.DB, winner.id, { preview, unread: true }),
+      ]);
+    } catch (e) {
+      await deleteWebhookDelivery(env, input.provider, input.externalId).catch(
+        () => {}
+      );
+      throw e;
+    }
+    return { leadId: winner.id, isNew: false, messageId: chat.id };
   }
 
+  // We won (or are the sole creator). The lead row is already committed above
+  // (needed for the race check); now write its initial content atomically.
   const now = nowTimeLabel();
-  await env.DB.prepare(
-    `INSERT INTO timeline_events (id, lead_id, sort_order, time_label, parts_json)
-     VALUES (?, ?, 0, ?, ?)`
-  )
-    .bind(
-      crypto.randomUUID(),
-      leadId,
-      now,
-      JSON.stringify([{ bold: "New lead", text: ` · ${source}` }])
-    )
-    .run();
-
-  await insertMessage(env.DB, leadId, 0, {
+  const day = buildMessageStatements(env.DB, leadId, 0, {
     kind: "day",
     day: "Today, just now",
   });
-
-  const messageId = await insertMessage(env.DB, leadId, 1, {
+  const chat = buildMessageStatements(env.DB, leadId, 1, {
     kind: "chat",
     from: "lead",
     text,
     time: now,
   });
+  const messageId = chat.id;
+
+  try {
+    await env.DB.batch([
+      env.DB.prepare(
+        `INSERT INTO timeline_events (id, lead_id, sort_order, time_label, parts_json)
+         VALUES (?, ?, 0, ?, ?)`
+      ).bind(
+        crypto.randomUUID(),
+        leadId,
+        now,
+        JSON.stringify([{ bold: "New lead", text: ` · ${source}` }])
+      ),
+      ...day.statements,
+      ...chat.statements,
+    ]);
+  } catch (e) {
+    // Roll back the standalone lead row + delivery so the retry starts clean.
+    await env.DB.prepare(
+      `DELETE FROM leads WHERE id = ? AND organization_id = ?`
+    )
+      .bind(leadId, env.ORGANIZATION_ID)
+      .run()
+      .catch(() => {});
+    await deleteWebhookDelivery(env, input.provider, input.externalId).catch(
+      () => {}
+    );
+    throw e;
+  }
 
   const lead = await getLead(env, leadId);
   if (lead) {
