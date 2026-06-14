@@ -127,31 +127,39 @@ async function insertMessageSeed(
   }
 }
 
+async function ensureOrganization(
+  db: D1Database,
+  orgId: string,
+  name: string
+): Promise<void> {
+  await db
+    .prepare(`INSERT OR IGNORE INTO organizations (id, name) VALUES (?, ?)`)
+    .bind(orgId, name)
+    .run();
+}
+
 export async function seedDatabase(env: Env): Promise<{ seeded: boolean; count: number }> {
-  const existing = await countLeads(env.DB, env.ORGANIZATION_ID);
+  const orgId = env.ORGANIZATION_ID;
+  const existing = await countLeads(env.DB, orgId);
   if (existing > 0) {
     return { seeded: false, count: existing };
   }
 
-  await env.DB.prepare(
-    `INSERT INTO organizations (id, name) VALUES (?, ?)`
-  )
-    .bind(env.ORGANIZATION_ID, ORG_NAME)
-    .run();
+  await ensureOrganization(env.DB, orgId, ORG_NAME);
 
   const existingLocations = await countOrgLocations(env);
   if (existingLocations > 0) {
     console.warn(
-      `Locations already configured for org ${env.ORGANIZATION_ID} (${existingLocations}) — skipping bundled location seed.`
+      `Locations already configured for org ${orgId} (${existingLocations}) — skipping bundled location seed.`
     );
   } else if (LOCATIONS.length > 0) {
     for (const loc of LOCATIONS) {
       await env.DB.prepare(
-        `INSERT INTO locations (id, organization_id, name, abbrev, badge_count) VALUES (?, ?, ?, ?, ?)`
+        `INSERT OR IGNORE INTO locations (id, organization_id, name, abbrev, badge_count) VALUES (?, ?, ?, ?, ?)`
       )
         .bind(
           loc.id,
-          env.ORGANIZATION_ID,
+          orgId,
           loc.name,
           loc.abbrev,
           loc.badge ?? null
@@ -160,7 +168,7 @@ export async function seedDatabase(env: Env): Promise<{ seeded: boolean; count: 
     }
   } else {
     console.warn(
-      `No locations configured for org ${env.ORGANIZATION_ID}. Add locations via Admin panel before going live.`
+      `No locations configured for org ${orgId}. Add locations via Admin panel before going live.`
     );
   }
 
@@ -174,7 +182,7 @@ export async function seedDatabase(env: Env): Promise<{ seeded: boolean; count: 
   let i = 0;
   for (const id of order) {
     const lead = leads[id];
-    if (lead) await insertLead(env.DB, env.ORGANIZATION_ID, lead, i++);
+    if (lead) await insertLead(env.DB, orgId, lead, i++);
   }
 
   return { seeded: true, count: order.length };

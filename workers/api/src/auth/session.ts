@@ -195,7 +195,8 @@ export function sessionCookieHeader(
     `${SESSION_COOKIE}=${token}`,
     "Path=/",
     "HttpOnly",
-    "SameSite=Lax",
+    // Lax blocks credentialed fetch from the web app (e.g. localhost / Vercel) to workers.dev.
+    secure ? "SameSite=None" : "SameSite=Lax",
     `Max-Age=${maxAgeSec}`,
   ];
   if (secure) parts.push("Secure");
@@ -207,7 +208,7 @@ export function clearSessionCookieHeader(secure = true): string {
     `${SESSION_COOKIE}=`,
     "Path=/",
     "HttpOnly",
-    "SameSite=Lax",
+    secure ? "SameSite=None" : "SameSite=Lax",
     "Max-Age=0",
   ];
   if (secure) parts.push("Secure");
