@@ -180,8 +180,13 @@ export async function processInboundSms(
   const leadId = crypto.randomUUID();
   const displayName = input.displayName?.trim() || phone;
 
+  // INSERT OR IGNORE handles the race where two concurrent requests both pass
+  // the SELECT-first lookup above and attempt to insert the same phone number.
+  // The UNIQUE INDEX idx_leads_org_phone (added in migration 0017) ensures only
+  // one insert succeeds; the second is silently ignored and we fall through to
+  // re-lookup the winner below.
   await env.DB.prepare(
-    `INSERT INTO leads (
+    `INSERT OR IGNORE INTO leads (
       id, organization_id, location_id, name, phone, time_label,
       status, status_label, assessment, preview, unread, source, interest,
       list_group, sort_order, just_arrived, location_confirmed
@@ -199,6 +204,30 @@ export async function processInboundSms(
       locationConfirmed ? 1 : 0
     )
     .run();
+
+  // If a concurrent insert won the race, our INSERT was ignored. Re-check.
+  const winner = await env.DB.prepare(
+    `SELECT id FROM leads WHERE phone = ? AND organization_id = ?`
+  )
+    .bind(phone, env.ORGANIZATION_ID)
+    .first<{ id: string }>();
+
+  if (winner && winner.id !== leadId) {
+    // Another request already created this lead — treat as existing
+    console.warn(
+      `Inbound SMS race: lead already exists for ${phone} in org ${env.ORGANIZATION_ID}. Routing to existing lead ${winner.id}.`
+    );
+    const sortOrder = await nextMessageSortOrder(env.DB, winner.id);
+    const msgTime = nowTimeLabel();
+    const messageId = await insertMessage(env.DB, winner.id, sortOrder, {
+      kind: "chat",
+      from: "lead",
+      text,
+      time: msgTime,
+    });
+    await updateLeadFields(env, winner.id, { preview, unread: true });
+    return { leadId: winner.id, isNew: false, messageId };
+  }
 
   const now = nowTimeLabel();
   await env.DB.prepare(

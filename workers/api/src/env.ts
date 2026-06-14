@@ -5,7 +5,7 @@ export interface Env {
   KNOWLEDGE?: VectorizeIndex;
   ORGANIZATION_ID: string;
   CORS_ORIGIN: string;
-  /** Set to "true" to enable /admin/seed, /admin/reset-all, /leads/simulate (demo/dev only) */
+  /** Set to "true" to enable /admin/seed and /leads/simulate (demo/dev only) */
   ENABLE_DEMO_TOOLS?: string;
   /** Set to "true" to use template stub instead of Workers AI */
   AI_DISABLED?: string;

@@ -21,6 +21,7 @@ export function nowTimeLabel(): string {
 
 type LeadRow = {
   id: string;
+  organization_id: string;
   location_id: string | null;
   name: string;
   phone: string;
@@ -96,12 +97,13 @@ function rowToMessage(r: MessageRow): Message {
 
 async function getLocationName(
   db: D1Database,
-  locationId: string | null
+  locationId: string | null,
+  orgId: string
 ): Promise<string> {
   if (!locationId) return "Unassigned";
   const row = await db
-    .prepare("SELECT name FROM locations WHERE id = ?")
-    .bind(locationId)
+    .prepare("SELECT name FROM locations WHERE id = ? AND organization_id = ?")
+    .bind(locationId, orgId)
     .first<{ name: string }>();
   return row?.name ?? locationId;
 }
@@ -140,7 +142,7 @@ async function loadTimeline(
 }
 
 async function rowToLead(db: D1Database, row: LeadRow): Promise<Lead> {
-  const location = await getLocationName(db, row.location_id);
+  const location = await getLocationName(db, row.location_id, row.organization_id);
   return {
     id: row.id,
     name: row.name,
@@ -245,8 +247,10 @@ export async function listLeadsSummaries(env: Env): Promise<{
 }
 
 export async function getLead(env: Env, id: string): Promise<Lead | null> {
-  const row = await env.DB.prepare("SELECT * FROM leads WHERE id = ?")
-    .bind(id)
+  const row = await env.DB.prepare(
+    "SELECT * FROM leads WHERE id = ? AND organization_id = ?"
+  )
+    .bind(id, env.ORGANIZATION_ID)
     .first<LeadRow>();
   if (!row) return null;
   return rowToLead(env.DB, row);

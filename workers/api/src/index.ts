@@ -1,6 +1,6 @@
 import { handleQueueBatch } from "./queue/consumer";
 import { optionsResponse, jsonResponse } from "./cors";
-import { handleAdminResetAll, handleAdminSeed } from "./routes/admin";
+import { handleAdminSeed } from "./routes/admin";
 import { handleListLeads, handleGetLead, handleSelectLead, handleTakeover, handleResumeAi, handleSimulateNewLead, handleDeleteLead, handleSendStaffMessage, handleAddLeadNote } from "./routes/leads";
 import { handleEventStream } from "./routes/events";
 import { getStaffSession } from "./auth/session";
@@ -37,6 +37,12 @@ export default {
     const url = new URL(request.url);
     const path = url.pathname;
 
+    if (env.ENABLE_DEMO_TOOLS === "true") {
+      console.warn(
+        `[${env.ORGANIZATION_ID}] ⚠️ DEMO TOOLS ARE ENABLED. Disable for production: set ENABLE_DEMO_TOOLS=false in wrangler.toml`
+      );
+    }
+
     try {
       // ── Public (unauthenticated) endpoints ──────────────────────────────
       // Everything else requires a valid staff session cookie. /auth/* routes
@@ -64,13 +70,6 @@ export default {
           return jsonResponse(request, env, { error: "Demo tools disabled" }, 403);
         }
         return handleAdminSeed(request, env);
-      }
-
-      if (path === "/admin/reset-all" && request.method === "POST") {
-        if (env.ENABLE_DEMO_TOOLS !== "true") {
-          return jsonResponse(request, env, { error: "Demo tools disabled" }, 403);
-        }
-        return handleAdminResetAll(request, env);
       }
 
       if (path === "/admin/twilio-check" && request.method === "GET") {

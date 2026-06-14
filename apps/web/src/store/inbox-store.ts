@@ -2,10 +2,7 @@
 
 import { create } from "zustand";
 import type { DomainEvent, GroupedLeads, Lead } from "@lead-intake/shared-types";
-import {
-  resetAllLeads,
-  restoreDemoSeed as apiRestoreDemoSeed,
-} from "@/lib/api/admin";
+import { restoreDemoSeed as apiRestoreDemoSeed } from "@/lib/api/admin";
 import {
   deleteLead as apiDeleteLead,
   fetchLeadOrNull,
@@ -79,7 +76,6 @@ interface InboxState {
   sendStaffMessage: (text: string) => Promise<{ smsSent: boolean }>;
   addLeadNote: (body: string) => Promise<void>;
   deleteLead: (id: string) => Promise<void>;
-  deleteAllLeads: () => Promise<{ message: string }>;
   restoreDemoSeed: () => Promise<{ seeded: boolean; count: number }>;
   applyEvent: (event: DomainEvent) => void;
   refreshLead: (id: string) => Promise<void>;
@@ -171,18 +167,6 @@ export const useInboxStore = create<InboxState>((set, get) => ({
     if (next && get().leads[next]) {
       await get().selectLead(next);
     }
-  },
-
-  deleteAllLeads: async () => {
-    const result = await resetAllLeads();
-    set({
-      activeLeadId: null,
-      activeCount: 0,
-      groups: { today: [], yesterday: [], thisWeek: [] },
-      leads: {},
-      typingLeadId: null,
-    });
-    return { message: result.message };
   },
 
   restoreDemoSeed: async () => {

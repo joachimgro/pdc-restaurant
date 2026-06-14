@@ -428,7 +428,7 @@ pdc-template/
 | `ORGANIZATION_ID` | Yes | Unique client slug (e.g. `acme-bjj`) |
 | `CORS_ORIGIN` | Yes | Comma-separated allowed origins |
 | `AI_EMBED_MODEL` | No | Embedding model (default: `@cf/baai/bge-base-en-v1.5`) |
-| `ENABLE_DEMO_TOOLS` | No | Set `"true"` to enable `/admin/seed`, `/admin/reset-all` and `/leads/simulate` |
+| `ENABLE_DEMO_TOOLS` | No | Set `"true"` to enable `/admin/seed` and `/leads/simulate` (demo/dev only) |
 | `AUTH_FROM_EMAIL` | Yes | Verified Resend sender address for staff sign-in emails |
 | `AUTH_WEB_ORIGIN` | No | Web origin to redirect to after sign-in (defaults to first `CORS_ORIGIN`) |
 
