@@ -1,24 +1,52 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useCallback, useEffect, useState } from "react";
 import type { StaffUser } from "@lead-intake/shared-types";
 import { fetchAuthMe } from "@/lib/api/client";
 import { useInboxStore } from "@/store/inbox-store";
+import { KnowledgeWorkspace } from "./KnowledgeWorkspace";
+import { NavRail } from "./NavRail";
 import { ProfileOnboarding } from "./ProfileOnboarding";
-import { LocationRail } from "./LocationRail";
 import { LeadsPanel } from "./LeadsPanel/LeadsPanel";
 import { ConversationPanel } from "./ConversationPanel/ConversationPanel";
 import { ProfilePanel } from "./ProfilePanel/ProfilePanel";
+import { SettingsWorkspace } from "./SettingsWorkspace";
+import {
+  type AppSection,
+  parseAppSection,
+  parseSettingsArea,
+} from "./app-section";
 
 export function InboxPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const init = useInboxStore((s) => s.init);
   const loading = useInboxStore((s) => s.loading);
   const error = useInboxStore((s) => s.error);
   const [profileOpen, setProfileOpen] = useState(false);
   const [authChecked, setAuthChecked] = useState(false);
   const [staffUser, setStaffUser] = useState<StaffUser | null>(null);
+  const [section, setSection] = useState<AppSection>("inbox");
+  const settingsArea =
+    parseSettingsArea(searchParams.get("tab")) ??
+    (searchParams.get("view") === "admin" ? "demo" : undefined);
+
+  const handleSectionChange = useCallback(
+    (next: AppSection) => {
+      setSection(next);
+      setProfileOpen(false);
+      const url =
+        next === "inbox" ? "/inbox" : `/inbox?view=${next}`;
+      router.replace(url, { scroll: false });
+    },
+    [router]
+  );
+
+  useEffect(() => {
+    const fromUrl = parseAppSection(searchParams.get("view"));
+    if (fromUrl) setSection(fromUrl);
+  }, [searchParams]);
 
   useEffect(() => {
     let cancelled = false;
@@ -59,11 +87,11 @@ export function InboxPage() {
     );
   }
 
-  if (loading) {
+  if (loading && section === "inbox") {
     return <div className="loading-screen">Loading leads…</div>;
   }
 
-  if (error) {
+  if (error && section === "inbox") {
     return (
       <div className="loading-screen">
         <p>{error}</p>
@@ -75,6 +103,8 @@ export function InboxPage() {
     );
   }
 
+  const showProfile = section === "inbox" && profileOpen;
+
   return (
     <>
       <div className="desktop-only-banner">
@@ -84,16 +114,33 @@ export function InboxPage() {
         </p>
       </div>
       <div className="inbox-shell">
-        <div className={`inbox-app${profileOpen ? "" : " inbox-app--profile-hidden"}`}>
-          <LocationRail staffUser={staffUser} />
-          <LeadsPanel />
-          <ConversationPanel
-            profileOpen={profileOpen}
-            onToggleProfile={() => setProfileOpen((v) => !v)}
+        <div
+          className={`inbox-app${showProfile ? "" : " inbox-app--profile-hidden"}`}
+        >
+          <NavRail
+            staffUser={staffUser}
+            activeSection={section}
+            onSectionChange={handleSectionChange}
           />
-          {profileOpen && (
-            <ProfilePanel onClose={() => setProfileOpen(false)} />
+          {section === "inbox" && (
+            <>
+              <LeadsPanel />
+              <ConversationPanel
+                profileOpen={profileOpen}
+                onToggleProfile={() => setProfileOpen((v) => !v)}
+              />
+              {showProfile && (
+                <ProfilePanel onClose={() => setProfileOpen(false)} />
+              )}
+            </>
           )}
+          {section === "settings" && (
+            <SettingsWorkspace
+              staffUser={staffUser}
+              initialArea={settingsArea}
+            />
+          )}
+          {section === "knowledge" && <KnowledgeWorkspace />}
         </div>
       </div>
     </>
