@@ -65,6 +65,11 @@ queue = "pdc-CHANGE_ME-queue"
 queue = "pdc-CHANGE_ME-queue"
 max_batch_size = 1
 max_batch_timeout = 5
+max_retries = 3
+# Dead-letter queue — failed messages land here instead of being silently dropped.
+# Create with: wrangler queues create pdc-{client-slug}-dlq
+# TODO: set to pdc-{client-slug}-dlq
+dead_letter_queue = "pdc-CHANGE_ME-dlq"
 
 [dev]
 port = 8787

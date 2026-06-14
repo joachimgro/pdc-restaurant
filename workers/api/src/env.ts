@@ -11,6 +11,12 @@ export interface Env {
   AI_DISABLED?: string;
   AI_EMBED_MODEL?: string;
   TELNYX_API_KEY?: string;
+  /**
+   * Telnyx webhook signing public key (base64-encoded Ed25519 public key).
+   * Find in Telnyx portal → Messaging → Webhooks → your endpoint → Public Key.
+   * Set with: wrangler secret put TELNYX_WEBHOOK_PUBLIC_KEY
+   */
+  TELNYX_WEBHOOK_PUBLIC_KEY?: string;
   TWILIO_ACCOUNT_SID?: string;
   TWILIO_AUTH_TOKEN?: string;
   TWILIO_API_KEY_SID?: string;

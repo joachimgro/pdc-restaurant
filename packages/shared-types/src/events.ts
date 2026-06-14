@@ -4,6 +4,7 @@ import { LeadSchema, MessageSchema } from "./lead";
 export const DomainEventTypeSchema = z.enum([
   "lead.created",
   "lead.updated",
+  "lead.ai_failed",
   "message.created",
   "typing.started",
   "typing.stopped",
@@ -43,9 +44,20 @@ export const TypingStoppedEventSchema = baseEvent.extend({
   payload: z.object({ leadId: z.string() }),
 });
 
+export const LeadAiFailedEventSchema = baseEvent.extend({
+  type: z.literal("lead.ai_failed"),
+  payload: z.object({
+    leadId: z.string(),
+    error: z.string(),
+    attempts: z.number(),
+    queueMessageId: z.string().optional(),
+  }),
+});
+
 export const DomainEventSchema = z.discriminatedUnion("type", [
   LeadCreatedEventSchema,
   LeadUpdatedEventSchema,
+  LeadAiFailedEventSchema,
   MessageCreatedEventSchema,
   TypingStartedEventSchema,
   TypingStoppedEventSchema,

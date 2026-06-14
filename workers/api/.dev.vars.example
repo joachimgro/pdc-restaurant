@@ -13,7 +13,11 @@ CORS_ORIGIN=http://localhost:3000
 # Enable demo tools locally (seed/reset/simulate)
 # ENABLE_DEMO_TOOLS=true
 
-# Twilio — set via: wrangler secret put TWILIO_AUTH_TOKEN (etc.)
+# ── Twilio ───────────────────────────────────────────────────────────────────
+# For local dev, skip Twilio signature verification with the flag below.
+# In production, remove the flag and set TWILIO_AUTH_TOKEN as a Worker secret:
+#   wrangler secret put TWILIO_AUTH_TOKEN
+TWILIO_SKIP_SIGNATURE_VALIDATION=true
 TWILIO_ACCOUNT_SID=ACxxxxxxxx
 TWILIO_AUTH_TOKEN=
 # Or API key pair (leave TWILIO_AUTH_TOKEN empty):
@@ -24,5 +28,9 @@ TWILIO_MESSAGING_SERVICE_SID=MGxxxxxxxx
 # Or use a single From number instead of Messaging Service:
 # TWILIO_FROM_NUMBER=+15005550006
 
-# Local testing only — never in production
-# TWILIO_SKIP_SIGNATURE_VALIDATION=true
+# ── Telnyx ───────────────────────────────────────────────────────────────────
+# Required in production — signature verification is mandatory and rejects all
+# requests when unset (returns 500).
+# Find the public key in Telnyx portal → Messaging → Webhooks → your endpoint → Public Key.
+# Set as a Worker secret: wrangler secret put TELNYX_WEBHOOK_PUBLIC_KEY
+# TELNYX_WEBHOOK_PUBLIC_KEY=

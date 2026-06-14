@@ -297,12 +297,12 @@ export const useInboxStore = create<InboxState>((set, get) => ({
       return;
     }
 
-    if (event.type === "lead.updated" || event.type === "message.created") {
-      const leadId =
-        event.type === "lead.updated"
-          ? event.payload.leadId
-          : event.payload.leadId;
-      void get().refreshLead(leadId);
+    if (
+      event.type === "lead.updated" ||
+      event.type === "lead.ai_failed" ||
+      event.type === "message.created"
+    ) {
+      void get().refreshLead(event.payload.leadId);
     }
   },
 }));

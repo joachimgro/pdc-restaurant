@@ -11,6 +11,8 @@ WEB_ENV="$ROOT/apps/web/.env.local"
 WORKER_NAME=$(grep '^name' "$API_DIR/wrangler.toml" | head -1 | sed 's/name = "\(.*\)"/\1/')
 DB_NAME=$(grep 'database_name' "$API_DIR/wrangler.toml" | head -1 | sed 's/.*database_name = "\(.*\)"/\1/')
 VECTORIZE_INDEX=$(grep 'index_name' "$API_DIR/wrangler.toml" | head -1 | sed 's/.*index_name = "\(.*\)"/\1/')
+QUEUE_NAME=$(grep '^queue = ' "$API_DIR/wrangler.toml" | head -1 | sed 's/.*queue = "\(.*\)"/\1/')
+DLQ_NAME=$(grep 'dead_letter_queue' "$API_DIR/wrangler.toml" | head -1 | sed 's/.*dead_letter_queue = "\(.*\)"/\1/')
 
 echo "==> PDC deploy: $WORKER_NAME"
 echo "    D1:        $DB_NAME"
@@ -27,6 +29,9 @@ pnpm exec wrangler d1 migrations apply "$DB_NAME" --remote
 
 echo "==> Ensuring Vectorize index exists (safe to re-run)..."
 pnpm exec wrangler vectorize create "$VECTORIZE_INDEX" --dimensions=768 --metric=cosine 2>/dev/null || true
+
+echo "==> Ensuring dead-letter queue exists: $DLQ_NAME..."
+pnpm exec wrangler queues create "$DLQ_NAME" 2>/dev/null || true
 
 echo "==> Deploying Worker..."
 DEPLOY_OUTPUT=$(pnpm exec wrangler deploy 2>&1)
@@ -67,3 +72,4 @@ echo "    2. Configure AI persona via Admin panel → AI Config"
 echo "    3. Add knowledge chunks via Admin panel → Knowledge"
 echo "    4. Re-ingest: curl -X POST $API_URL/admin/ingest-knowledge"
 echo "    5. Set Twilio secrets: see workers/api/TWILIO.md"
+echo "    6. Set Telnyx secret: wrangler secret put TELNYX_WEBHOOK_PUBLIC_KEY"
