@@ -1,0 +1,9 @@
+{
+  "id": "music-school",
+  "label": "Music school (handoff)",
+  "capabilities": {
+    "simpleScheduling": false,
+    "multiLocation": false
+  },
+  "presetId": "music-school"
+}

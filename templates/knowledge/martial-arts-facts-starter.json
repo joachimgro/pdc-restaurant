@@ -1,0 +1,18 @@
+[
+  {
+    "title": "Free trial policy",
+    "text": "Free trial class — no commitment. What to bring, what happens, how to book via SMS."
+  },
+  {
+    "title": "Pricing",
+    "text": "Membership ranges, rolling contracts, family discounts. Always invite free trial after sharing price."
+  },
+  {
+    "title": "What is BJJ?",
+    "text": "Programme description for parents/beginners — factual only."
+  },
+  {
+    "title": "Location — schedule",
+    "text": "Per-branch: address, class times, parking. Scope with locationId when seeding."
+  }
+]

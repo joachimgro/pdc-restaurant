@@ -1,4 +1,9 @@
 import type { Lead } from "@lead-intake/shared-types";
+import {
+  buildTuitionDemoLeads,
+  TUITION_LEAD_GROUPS,
+  TUITION_OLIVIA_SIMULATE,
+} from "./leads-tuition-demo";
 
 // Client locations are managed via the Admin panel and stored in D1.
 // Do not add locations here — they will cause merge conflicts on base updates.
@@ -26,12 +31,25 @@ export const LEAD_GROUPS: {
   thisWeek: [],
 };
 
+export type SeedProfile = "default" | "tuition";
+
 /**
  * Build seeded demo leads. Empty by default — only used when
  * ENABLE_DEMO_TOOLS=true and /admin/seed is called.
  */
-export function buildSeedLeads(): Record<string, Lead> {
+export function buildSeedLeads(profile: SeedProfile = "default"): Record<string, Lead> {
+  if (profile === "tuition") return buildTuitionDemoLeads();
   return {};
+}
+
+export function leadGroupsForProfile(profile: SeedProfile = "default") {
+  if (profile === "tuition") return TUITION_LEAD_GROUPS;
+  return LEAD_GROUPS;
+}
+
+export function oliviaSimulateForProfile(profile: SeedProfile = "default") {
+  if (profile === "tuition") return TUITION_OLIVIA_SIMULATE;
+  return OLIVIA_SIMULATE;
 }
 
 /**

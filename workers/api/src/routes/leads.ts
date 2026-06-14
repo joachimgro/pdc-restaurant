@@ -1,4 +1,4 @@
-import { OLIVIA_SIMULATE } from "@lead-intake/seed-data";
+import { oliviaSimulateForProfile } from "@lead-intake/seed-data";
 import type { Message } from "@lead-intake/shared-types";
 import { jsonResponse } from "../cors";
 import { logStaffActivity } from "../auth/activity";
@@ -18,6 +18,12 @@ import {
 } from "../db/leads";
 import { sendTwilioSms, twilioConfigured } from "../twilio/send";
 import type { Env } from "../env";
+
+function simulateProfile(env: Env) {
+  return env.ORGANIZATION_ID === "phiof" && env.ENABLE_DEMO_TOOLS === "true"
+    ? "tuition"
+    : "default";
+}
 
 export async function handleListLeads(
   request: Request,
@@ -133,6 +139,7 @@ export async function handleSimulateNewLead(
   }
 
   const id = "olivia";
+  const fixture = oliviaSimulateForProfile(simulateProfile(env));
   await env.DB.prepare(
     `INSERT INTO leads (
       id, organization_id, location_id, name, phone, time_label,
@@ -143,14 +150,14 @@ export async function handleSimulateNewLead(
     .bind(
       id,
       env.ORGANIZATION_ID,
-      OLIVIA_SIMULATE.locationId,
-      OLIVIA_SIMULATE.name,
-      OLIVIA_SIMULATE.phone,
+      fixture.locationId,
+      fixture.name,
+      fixture.phone,
       nowTimeLabel(),
       "Identifying interest…",
-      OLIVIA_SIMULATE.inboundText.slice(0, 48) + "...",
-      OLIVIA_SIMULATE.source,
-      OLIVIA_SIMULATE.interest
+      fixture.inboundText.slice(0, 48) + "...",
+      fixture.source,
+      fixture.interest
     )
     .run();
 
@@ -177,7 +184,7 @@ export async function handleSimulateNewLead(
   await insertMessage(env.DB, id, 1, {
     kind: "chat",
     from: "lead",
-    text: OLIVIA_SIMULATE.inboundText,
+    text: fixture.inboundText,
     time: now,
   });
 

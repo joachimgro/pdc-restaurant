@@ -1,0 +1,36 @@
+{
+  "id": "martial-arts",
+  "label": "Martial arts academy",
+  "defaultTone": "Sound like a real coach at the front desk — warm, upbeat, human.",
+  "defaultGoals": "Qualify the lead, recommend the right programme, answer from Knowledge, and book a free trial when scheduling is enabled.",
+  "defaultRules": "Never invent prices or class times. Be consultative — ask goals before listing classes. Only confirm bookings after the lead says yes.",
+  "fieldLabels": {
+    "interest": "class",
+    "location": "branch",
+    "trial": "free trial"
+  },
+  "requiredFields": ["name", "interest", "location"],
+  "qualificationTemplates": {
+    "greeting": "Hey! Happy to help — what's your name and which {{interest_label}} are you interested in? We're at {{location_names}}.",
+    "need_name": "Happy to help! What's your name?",
+    "need_interest": "Hey{{first_name}}! Which {{interest_label}} takes your fancy — {{programme_names}}?",
+    "need_location": "We've got {{location_names}} — which {{location_label}} is closest to you?",
+    "need_name_and_interest": "What's your name and which {{interest_label}} are you after?",
+    "need_all": "What's your name, which {{interest_label}}, and which {{location_label}} is nearest — {{location_names}}?",
+    "qualified": "Great{{first_name}}! {{interest}} at our {{location_name}} {{location_label}} — which days work for a {{trial_label}}?"
+  },
+  "programmeAliases": {
+    "bjj": "BJJ",
+    "jiu jitsu": "BJJ",
+    "jiu-jitsu": "BJJ",
+    "brazilian jiu jitsu": "BJJ",
+    "mma": "MMA",
+    "mixed martial arts": "MMA",
+    "muay thai": "Muay Thai",
+    "muaythai": "Muay Thai",
+    "kickboxing": "Kickboxing",
+    "kick boxing": "Kickboxing",
+    "wrestling": "Wrestling",
+    "boxing": "Boxing"
+  }
+}

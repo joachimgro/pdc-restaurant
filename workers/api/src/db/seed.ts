@@ -1,6 +1,7 @@
 import {
   buildSeedLeads,
-  LEAD_GROUPS,
+  leadGroupsForProfile,
+  type SeedProfile,
   LOCATIONS,
 } from "@lead-intake/seed-data";
 import type { Lead, Message } from "@lead-intake/shared-types";
@@ -11,20 +12,30 @@ import { countOrgLocations } from "./locations";
 // TODO: set the org display name (used in DB only; AI-facing name comes from ai_config)
 const ORG_NAME = "TODO: Client Name";
 
-function groupKeyForLeadId(id: string): string {
-  if ((LEAD_GROUPS.today as readonly string[]).includes(id)) return "today";
-  if ((LEAD_GROUPS.yesterday as readonly string[]).includes(id))
-    return "yesterday";
+function groupKeyForLeadId(
+  id: string,
+  groups: ReturnType<typeof leadGroupsForProfile>
+): string {
+  if ((groups.today as readonly string[]).includes(id)) return "today";
+  if ((groups.yesterday as readonly string[]).includes(id)) return "yesterday";
   return "this_week";
+}
+
+function seedProfileForEnv(env: Env): SeedProfile {
+  if (env.ORGANIZATION_ID === "phiof" && env.ENABLE_DEMO_TOOLS === "true") {
+    return "tuition";
+  }
+  return "default";
 }
 
 async function insertLead(
   db: D1Database,
   orgId: string,
   lead: Lead,
-  sortOrder: number
+  sortOrder: number,
+  groups: ReturnType<typeof leadGroupsForProfile>
 ): Promise<void> {
-  const listGroup = groupKeyForLeadId(lead.id);
+  const listGroup = groupKeyForLeadId(lead.id, groups);
 
   await db
     .prepare(
@@ -172,17 +183,19 @@ export async function seedDatabase(env: Env): Promise<{ seeded: boolean; count: 
     );
   }
 
-  const leads = buildSeedLeads();
+  const profile = seedProfileForEnv(env);
+  const groups = leadGroupsForProfile(profile);
+  const leads = buildSeedLeads(profile);
   const order = [
-    ...LEAD_GROUPS.today,
-    ...LEAD_GROUPS.yesterday,
-    ...LEAD_GROUPS.thisWeek,
+    ...groups.today,
+    ...groups.yesterday,
+    ...groups.thisWeek,
   ];
 
   let i = 0;
   for (const id of order) {
     const lead = leads[id];
-    if (lead) await insertLead(env.DB, orgId, lead, i++);
+    if (lead) await insertLead(env.DB, orgId, lead, i++, groups);
   }
 
   return { seeded: true, count: order.length };

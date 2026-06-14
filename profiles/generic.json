@@ -1,0 +1,9 @@
+{
+  "id": "generic",
+  "label": "Generic service business",
+  "capabilities": {
+    "simpleScheduling": false,
+    "multiLocation": false
+  },
+  "presetId": "generic-service"
+}

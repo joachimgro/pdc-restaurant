@@ -10,6 +10,12 @@ export interface AiConfigRow {
   model_judge: string;
   safe_fallback_message: string | null;
   intake_context_label: string | null;
+  qualification_enabled?: number;
+  required_fields?: string | null;
+  field_labels?: string | null;
+  programme_aliases?: string | null;
+  qualification_templates?: string | null;
+  preset_id?: string | null;
 }
 
 const DEFAULT_INTAKE_CONTEXT_LABEL =
@@ -22,13 +28,14 @@ const DEFAULT_CONFIG: Omit<AiConfigRow, "organization_id"> = {
   academy_name: "TODO: Set academy name in Admin → AI Config",
   tone: "Friendly, professional, concise",
   goals:
-    "Qualify the lead, answer their questions using the knowledge base, and book a trial session",
+    "Qualify the lead, answer questions from the knowledge base, capture preferences, and hand off to staff for confirmation.",
   rules:
-    "Never discuss pricing unless it's in the knowledge base. Never make promises about availability without checking schedules.",
+    "Never discuss pricing unless it is in the knowledge base. Never invent schedules or availability. Never promise specific slots unless scheduling is enabled.",
   model_reply: "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
   model_judge: "@cf/meta/llama-3.1-8b-instruct",
   safe_fallback_message: null,
   intake_context_label: null,
+  preset_id: "generic-service",
 };
 
 export async function getAiConfig(
@@ -36,7 +43,9 @@ export async function getAiConfig(
 ): Promise<AiConfigRow & { organization_id: string }> {
   const row = await env.DB.prepare(
     `SELECT organization_id, academy_name, tone, goals, rules, model_reply, model_judge,
-            safe_fallback_message, intake_context_label
+            safe_fallback_message, intake_context_label,
+            qualification_enabled, required_fields, field_labels,
+            programme_aliases, qualification_templates, preset_id
      FROM ai_config WHERE organization_id = ?`
   )
     .bind(env.ORGANIZATION_ID)

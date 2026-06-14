@@ -238,6 +238,8 @@ Fill in the `KNOWLEDGE_CHUNKS` array with the client's:
 
 See `docs/knowledge-guide.md` for detailed guidance and chunk templates.
 
+For vertical profiles, handoff vs scheduling, and demo packs see `docs/client-setup.md` and `docs/demos/oldham-tuition.md`.
+
 ---
 
 ### 7 — Populate `packages/seed-data/src/leads.ts`

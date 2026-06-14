@@ -1,7 +1,8 @@
 import type { Reasoning } from "@lead-intake/shared-types";
-import { OLIVIA_SIMULATE } from "@lead-intake/seed-data";
+import { oliviaSimulateForProfile } from "@lead-intake/seed-data";
 import type { Lead } from "@lead-intake/shared-types";
 import type { ProgrammeSchedule } from "../db/location-schedules";
+import type { Env } from "../env";
 import {
   displayFirstName,
   isWebsiteIntakePrompt,
@@ -9,12 +10,17 @@ import {
 } from "./intake-context";
 import type { AiReply } from "./pipeline";
 
-export function stubReplyForOlivia(): AiReply {
+export function stubReplyForOlivia(env: Env): AiReply {
+  const profile =
+    env.ORGANIZATION_ID === "phiof" && env.ENABLE_DEMO_TOOLS === "true"
+      ? "tuition"
+      : "default";
+  const fixture = oliviaSimulateForProfile(profile);
   return {
-    text: OLIVIA_SIMULATE.aiReply,
-    reasoning: OLIVIA_SIMULATE.reasoning,
+    text: fixture.aiReply,
+    reasoning: fixture.reasoning,
     assessment: "New enquiry — qualifying interest",
-    preview: "Hi Olivia! Lovely — referrals are how we grow...",
+    preview: fixture.aiReply.slice(0, 53) + "...",
     status: "engaged",
     statusLabel: "Engaged",
   };

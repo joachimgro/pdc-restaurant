@@ -93,13 +93,14 @@ export function pickScheduleLine(
   );
   if (best) return extractSchedulePhrase(best.text);
 
-  return "through the week — we'll confirm exact times when you book your trial";
+  return "see Knowledge for session times — the team will confirm when you enquire";
 }
 
 export function buildLeadIntakeContextBlock(
   lead: Lead,
   scheduleLine?: string,
-  dbSchedule?: ProgrammeSchedule | null
+  dbSchedule?: ProgrammeSchedule | null,
+  schedulingEnabled = true
 ): string {
   const firstName = displayFirstName(lead.name);
   const child = lead.child
@@ -114,12 +115,17 @@ export function buildLeadIntakeContextBlock(
       : "";
 
   let bookingRules = "";
-  if (lead.trialSlotLabel) {
-    bookingRules = `Booked trial: ${lead.trialSlotLabel} — do not re-offer unless they ask to change.`;
-  } else if (lead.trialProposed) {
-    bookingRules = `Proposed trial: ${lead.trialProposed.label} — waiting for lead to reply YES before marking booked.`;
-  } else if (dbSchedule?.slots.length) {
-    bookingRules = `Class times ${timesOffer} on scheduled days only (not every day). When they pick a day+time, PROPOSE the trial and ask them to reply yes — do NOT mark booked until they confirm.`;
+  if (schedulingEnabled) {
+    if (lead.trialSlotLabel) {
+      bookingRules = `Booked trial: ${lead.trialSlotLabel} — do not re-offer unless they ask to change.`;
+    } else if (lead.trialProposed) {
+      bookingRules = `Proposed trial: ${lead.trialProposed.label} — waiting for lead to reply YES before marking booked.`;
+    } else if (dbSchedule?.slots.length) {
+      bookingRules = `Class times ${timesOffer} on scheduled days only (not every day). When they pick a day+time, PROPOSE the trial and ask them to reply yes — do NOT mark booked until they confirm.`;
+    }
+  } else {
+    bookingRules =
+      "HANDOFF MODE: Do NOT confirm bookings or trial slots in SMS. Capture preferred days/times and say a team member will call to arrange their assessment or next step.";
   }
 
   return `=== LEAD CONTEXT (website form — ALWAYS true for this conversation) ===
@@ -133,8 +139,8 @@ Schedule: ${schedule}
 ${bookingRules ? `${bookingRules}\n` : ""}
 Hard rules:
 - Use branch "${lead.location}" and programme "${lead.interest}" unless they ask to change.
-- NEVER substitute a different class (e.g. do not say BJJ if the form says ${lead.interest}).
-- Once a day and time are agreed, confirm warmly — do NOT ask them to pick again from 5pm / 7:30pm / 8:30pm.
+- NEVER substitute a different programme (e.g. do not say BJJ if the form says ${lead.interest}).
+- Once a day and time are agreed, confirm warmly — do not ask them to pick again.
 - Read the thread; do not re-ask answered questions.
 - Never output template tags like {firstName}.`;
 }
@@ -142,11 +148,23 @@ Hard rules:
 export function buildWelcomeSms(
   lead: Lead,
   scheduleLine?: string,
-  dbSchedule?: ProgrammeSchedule | null
+  dbSchedule?: ProgrammeSchedule | null,
+  schedulingEnabled = true
 ): string {
   const firstName = displayFirstName(lead.name);
   const lessonType = lead.interest;
   const branch = lead.location;
+
+  if (!schedulingEnabled) {
+    const trialLabel = lead.interest.toLowerCase().includes("gcse") ||
+      lead.interest.toLowerCase().includes("math") ||
+      lead.interest.toLowerCase().includes("english")
+      ? "free skills assessment"
+      : "next step";
+    return `Hi ${firstName}! Thanks for getting in touch about ${lessonType}.
+
+We offer a ${trialLabel} — what days or times usually work for you? Our team will call to confirm.`;
+  }
 
   if (dbSchedule?.slots.length) {
     const summary = scheduleLine ?? buildScheduleSummary(dbSchedule);
@@ -173,10 +191,11 @@ We'd love to offer you a free trial to see if you'd enjoy it! Which day works be
 export function buildWebsiteIntakePrompt(
   lead: Lead,
   scheduleLine?: string,
-  dbSchedule?: ProgrammeSchedule | null
+  dbSchedule?: ProgrammeSchedule | null,
+  schedulingEnabled = true
 ): string {
   const schedule = scheduleLine ?? pickScheduleLine(lead, [], dbSchedule);
-  const welcome = buildWelcomeSms(lead, schedule, dbSchedule);
+  const welcome = buildWelcomeSms(lead, schedule, dbSchedule, schedulingEnabled);
 
   return `[WEBSITE FORM — lead has NOT texted yet]
 
@@ -186,7 +205,7 @@ Send EXACTLY this welcome SMS (you may fix minor punctuation only; keep branch, 
 ${welcome}
 """
 
-${buildLeadIntakeContextBlock(lead, schedule, dbSchedule)}`;
+${buildLeadIntakeContextBlock(lead, schedule, dbSchedule, schedulingEnabled)}`;
 }
 
 export function isWebsiteIntakePrompt(text: string): boolean {
@@ -207,11 +226,12 @@ export function isFirstWelcomeTurn(
 export function welcomeReplyFromLead(
   lead: Lead,
   scheduleLine?: string,
-  dbSchedule?: ProgrammeSchedule | null
+  dbSchedule?: ProgrammeSchedule | null,
+  schedulingEnabled = true
 ): { text: string; schedule: string } {
   const schedule = scheduleLine ?? pickScheduleLine(lead, [], dbSchedule);
   return {
-    text: buildWelcomeSms(lead, schedule, dbSchedule),
+    text: buildWelcomeSms(lead, schedule, dbSchedule, schedulingEnabled),
     schedule,
   };
 }

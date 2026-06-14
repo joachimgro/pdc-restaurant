@@ -16,23 +16,36 @@ migration. Client-specific knowledge belongs in D1 only.
 - **Under ~400 words** (around 500 tokens). Shorter is usually better.
 - **Written in plain English**, not bullet points. The AI reads this verbatim.
 - **Specific and factual.** Vague knowledge produces vague replies.
-- **Actionable.** Include what the AI should say or do ("always offer the free trial after").
+- **Facts only.** Conversation style and flow live in the platform + vertical playbooks (code), not in knowledge chunks.
 
 ---
 
-## Essential Chunk Categories
+## What NOT to put in knowledge
+
+Do **not** add chunks for:
+
+- How to sound human, SMS style, or name usage
+- Conversation flow playbooks ("acknowledge, fact, forward step")
+- Vertical consultative routing (tuition parent tone, gym goal-first routing)
+
+Those are injected automatically from **Settings → AI → Apply preset** (`preset_id` in `ai_config`) plus shared platform rules in code. RAG retrieves **client facts only**; chunks with `source` starting with `conversation/` or `platform/` are excluded from retrieval.
+
+Starter fact templates: `templates/knowledge/tuition-centre-facts.json`, `martial-arts-facts-starter.json`.
+
+---
+
+## Essential fact categories
 
 Every client deployment should have chunks covering at least:
 
 | Category | What to include |
 |---|---|
-| Conversation style | How the AI should sound, what to avoid |
-| Conversation flow | How to advance from enquiry → trial → membership |
-| Free trial policy | How to book, what to bring, what happens |
-| Pricing | Ranges, payment options, no-contract policy |
-| Classes / programmes | What each class is, who it's for |
-| Locations | Per-location: address, class times, parking, contact |
-| FAQ | Age requirements, what to wear, cancellation, etc. |
+| About / USPs | Who you help, key differentiators |
+| Programmes or subjects | What you offer, who it's for |
+| Free trial / assessment | What happens, how to book (or handoff) |
+| Pricing | Ranges and policies (if published) |
+| Locations | Address, session times (informational), contact |
+| FAQ | Common parent/customer questions |
 
 ---
 
@@ -48,22 +61,7 @@ Every client deployment should have chunks covering at least:
 
 ---
 
-## Conversation Style Chunk (required)
-
-Always include a style chunk. This controls how the AI sounds.
-
-**Title:** Conversation style
-
-**Text example:**
-
-> Write like a friendly team member texting from the desk — warm, human, concise. Use
-> contractions and short sentences. Good openers: "Hey!", "Hi [name] —", "No worries at all".
-> Avoid corporate language: "Thank you for your enquiry", "We would be delighted". Never
-> mention AI or automated systems.
-
----
-
-## Location Chunk Example
+## Location chunk example
 
 **Title:** London HQ — schedule and details
 

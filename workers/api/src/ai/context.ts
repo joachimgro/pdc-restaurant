@@ -3,6 +3,7 @@ import { getLead } from "../db/leads";
 import { getAiConfig, getLocationOverride } from "../db/ai-config";
 import type { Env } from "../env";
 import type { ProgrammeSchedule } from "../db/location-schedules";
+import { simpleSchedulingEnabled } from "../capabilities";
 import { buildLeadIntakeContextBlock } from "./intake-context";
 
 export interface ConversationContext {
@@ -103,12 +104,14 @@ export async function buildConversationContext(
     getLocationOverride(env.DB, lead.locationId),
   ]);
 
+  const scheduling = simpleSchedulingEnabled(env);
   const schedule =
-    scheduleLine || "through the week — confirm at booking";
+    scheduleLine || "see Knowledge for session times";
   const intakeContextBlock = buildLeadIntakeContextBlock(
     lead,
     schedule,
-    dbSchedule
+    dbSchedule,
+    scheduling
   );
 
   return {

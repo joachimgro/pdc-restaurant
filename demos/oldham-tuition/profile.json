@@ -1,0 +1,19 @@
+{
+  "id": "oldham-tuition",
+  "label": "Oldham Tuition Centre sales demo",
+  "extends": "tuition-centre",
+  "capabilities": {
+    "simpleScheduling": false,
+    "multiLocation": false,
+    "demoTools": true
+  },
+  "presetId": "tuition-centre",
+  "ai": {
+    "academyName": "Oldham Tuition Centre",
+    "tone": "Warm, reassuring, professional — speak to parents clearly and never talk down to children.",
+    "goals": "Help parents enquire about Maths, English, Science, Coding, and GCSE support. Capture preferred times and hand off to staff for a free skills assessment.",
+    "rules": "Never promise a specific tutor or slot. Offer a free skills assessment and say the team will call to confirm. Answer factual questions from Knowledge only. Class times in Knowledge are informational, not bookable slots."
+  },
+  "knowledgePack": "demos/oldham-tuition/knowledge-chunks.json",
+  "seedProfile": "tuition"
+}

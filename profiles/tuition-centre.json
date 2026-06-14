@@ -1,0 +1,9 @@
+{
+  "id": "tuition-centre",
+  "label": "Tuition centre (handoff)",
+  "capabilities": {
+    "simpleScheduling": false,
+    "multiLocation": false
+  },
+  "presetId": "tuition-centre"
+}

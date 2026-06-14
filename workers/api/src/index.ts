@@ -6,6 +6,7 @@ import { handleAdminSeed } from "./routes/admin";
 import { handleListLeads, handleGetLead, handleSelectLead, handleTakeover, handleResumeAi, handleSimulateNewLead, handleDeleteLead, handleSendStaffMessage, handleAddLeadNote } from "./routes/leads";
 import { handleEventStream } from "./routes/events";
 import { getStaffSession } from "./auth/session";
+import { adminSecretAuthorized } from "./auth/admin-secret";
 import { handleMagicLink, handleVerify, handleLogout, handleMe, handleUpdateProfile, handleListTeam, handleInviteTeam } from "./routes/auth";
 import { handleTelnyxWebhook } from "./routes/webhooks";
 import { handleTwilioInbound, handleTwilioStatus } from "./routes/twilio";
@@ -13,7 +14,9 @@ import { handleTwilioCheck } from "./routes/twilio-admin";
 import {
   handleAiConfig,
   handleAiStatus,
+  handleApplyAiPreset,
   handleIngestKnowledge,
+  handlePatchAiConfig,
 } from "./routes/ai-admin";
 import { handleIntakeSubmit } from "./routes/intake";
 import {
@@ -30,6 +33,7 @@ import {
   handleSyncLocationSchedules,
   handleUpdateLocation,
 } from "./routes/locations-admin";
+import { handleCapabilities } from "./routes/capabilities-admin";
 import type { Env, QueueMessage } from "./env";
 
 export default {
@@ -69,12 +73,13 @@ export default {
       // internally (and magic-link/verify must be reachable while logged out).
       const isPublic =
         (path === "/leads/intake" && request.method === "POST") ||
+        (path === "/admin/ingest-knowledge" && request.method === "POST") ||
         path.startsWith("/auth/") ||
         path.startsWith("/webhooks/");
 
       if (!isPublic) {
         const session = await getStaffSession(env, request);
-        if (!session) {
+        if (!session && !adminSecretAuthorized(request, env)) {
           return jsonResponse(request, env, { error: "Unauthorized" }, 401);
         }
       }
@@ -90,8 +95,20 @@ export default {
         return handleTwilioCheck(request, env);
       }
 
+      if (path === "/admin/capabilities" && request.method === "GET") {
+        return handleCapabilities(request, env);
+      }
+
       if (path === "/admin/ai-config" && request.method === "GET") {
         return handleAiConfig(request, env);
+      }
+
+      if (path === "/admin/ai-config" && request.method === "PATCH") {
+        return handlePatchAiConfig(request, env);
+      }
+
+      if (path === "/admin/ai-config/apply-preset" && request.method === "POST") {
+        return handleApplyAiPreset(request, env);
       }
 
       if (path === "/admin/ai-status" && request.method === "GET") {

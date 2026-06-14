@@ -13,6 +13,7 @@ import {
 } from "./webhook-deliveries";
 import { logger } from "../log";
 import type { Env } from "../env";
+import { multiLocationEnabled } from "../capabilities";
 import { canonicalPhone, phoneDigitSuffix } from "./phone-utils";
 
 export interface InboundSmsInput {
@@ -47,7 +48,7 @@ export async function processInboundSms(
     const defaultLocation = await getDefaultLocation(env);
     if (defaultLocation) {
       locationId = defaultLocation.id;
-      locationConfirmed = false;
+      locationConfirmed = !multiLocationEnabled(env);
     } else {
       logger.warn(env, "Inbound message — no locations configured; lead created without location", {
         phone,

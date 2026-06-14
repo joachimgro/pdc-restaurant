@@ -1,0 +1,9 @@
+{
+  "id": "martial-arts",
+  "label": "Martial arts gym (booking)",
+  "capabilities": {
+    "simpleScheduling": true,
+    "multiLocation": true
+  },
+  "presetId": "martial-arts"
+}

@@ -1,5 +1,7 @@
 import { getAiConfig } from "../db/ai-config";
+import { getLocationNameById } from "../db/locations";
 import type { Env } from "../env";
+import { simpleSchedulingEnabled } from "../capabilities";
 import {
   buildRagQuery,
   retrieveKnowledge,
@@ -14,12 +16,7 @@ import type { Lead } from "@lead-intake/shared-types";
 import { parseGenerateOutput } from "./parse-output";
 import { aiEnabled, runChatModel } from "./workers-ai";
 
-const LOCATION_NAMES: Record<string, string> = {
-  manchester: "Manchester",
-  leeds: "Leeds",
-  bolton: "Bolton",
-  stockport: "Stockport",
-};
+const LOCATION_NAMES: Record<string, string> = {};
 
 export interface KnowledgePreviewInput {
   query: string;
@@ -47,7 +44,9 @@ export async function previewKnowledge(
 ): Promise<KnowledgePreviewResult> {
   const locationId = input.locationId?.trim() || undefined;
   const locationName =
-    (locationId && LOCATION_NAMES[locationId]) || "our academy";
+    (locationId && (await getLocationNameById(env, locationId))) ||
+    (locationId && LOCATION_NAMES[locationId]) ||
+    "our location";
   const interest = input.interest?.trim() || "classes";
   const queryText = buildRagQuery(input.query, interest, locationName);
 
@@ -91,6 +90,7 @@ export async function previewKnowledge(
         timeline: [],
         notes: [],
       };
+      const scheduling = simpleSchedulingEnabled(env);
       const scheduleLine = pickScheduleLine(lead, chunks, null);
       const ctx: ConversationContext = {
         lead,
@@ -98,7 +98,12 @@ export async function previewKnowledge(
         history: [{ role: "lead", text: input.query }],
         locationOverride: null,
         aiConfig,
-        intakeContextBlock: buildLeadIntakeContextBlock(lead, scheduleLine, null),
+        intakeContextBlock: buildLeadIntakeContextBlock(
+          lead,
+          scheduleLine,
+          null,
+          scheduling
+        ),
         scheduleLine,
         dbSchedule: null,
       };
@@ -114,12 +119,17 @@ export async function previewKnowledge(
         [
           {
             role: "system",
-            content: buildSystemPrompt(aiConfig, null, chunks, ctx.intakeContextBlock),
+            content: buildSystemPrompt(aiConfig, null, chunks, ctx.intakeContextBlock, {
+              schedulingEnabled: scheduling,
+              presetId: aiConfig.preset_id,
+            }),
           },
           ...structuredHistory,
           {
             role: "user",
-            content: buildCurrentTurnPrompt(ctx, input.query),
+            content: buildCurrentTurnPrompt(ctx, input.query, {
+              schedulingEnabled: scheduling,
+            }),
           },
         ],
         400,

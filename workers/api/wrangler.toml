@@ -25,6 +25,10 @@ AI_EMBED_MODEL = "@cf/baai/bge-base-en-v1.5"
 # Set to "true" to enable /admin/seed and /leads/simulate (demo/dev only)
 ENABLE_DEMO_TOOLS = "false"
 
+# Gym-style slot booking + Schedule settings (off by default — handoff mode)
+ENABLE_SIMPLE_SCHEDULING = "false"
+ENABLE_MULTI_LOCATION = "false"
+
 # ── Staff auth (magic-link sign-in via Resend) ───────────────────────────────
 # The hidden platform operator (super admin) is hardcoded in
 # workers/api/src/auth/constants.ts (joachim@phiof.digital) and is the same

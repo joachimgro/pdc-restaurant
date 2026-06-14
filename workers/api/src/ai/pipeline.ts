@@ -49,14 +49,28 @@ import { confirmTrial, proposeTrial } from "../db/trial-booking";
 import { runHumanBookingFlow } from "./run-booking-flow";
 import { stubReplyForOlivia, stubReplyFromLead } from "./stub";
 import { aiEnabled, runChatModel, type ChatMessage } from "./workers-ai";
-import { handleQualificationTurn, learnFromMessage, needsQualification } from "./qualification";
+import { simpleSchedulingEnabled } from "../capabilities";
+import { captureHandoffSignals } from "./handoff";
+import {
+  handleQualificationTurn,
+  learnFromMessage,
+  needsQualification,
+} from "./qualification";
+import {
+  getEffectiveRequiredFieldsForOrg,
+  getProgrammeAliases,
+} from "../db/ai-qualification-config";
 import { extractProgrammeFromText } from "./programme-resolve";
 import type { Lead } from "@lead-intake/shared-types";
 import type { ProgrammeSchedule } from "../db/location-schedules";
 
-function replyUsesWrongProgramme(text: string, lead: Lead): boolean {
+function replyUsesWrongProgramme(
+  text: string,
+  lead: Lead,
+  aliases: Record<string, string>
+): boolean {
   if (!lead.interest || lead.interest === "Unknown") return false;
-  const mentioned = extractProgrammeFromText(text);
+  const mentioned = extractProgrammeFromText(text, aliases);
   return Boolean(mentioned && mentioned !== lead.interest);
 }
 
@@ -98,15 +112,19 @@ export async function generateAiReply(
   inboundText: string
 ): Promise<AiReply> {
   if (leadId === "olivia") {
-    return stubReplyForOlivia();
+    return stubReplyForOlivia(env);
   }
+
+  const scheduling = simpleSchedulingEnabled(env);
 
   const leadForRag = await getLead(env, leadId);
   if (!leadForRag) {
     return stubReplyFromLead(null, inboundText, []);
   }
 
-  const dbSchedule = await loadScheduleForLead(env, leadForRag);
+  const dbSchedule = scheduling
+    ? await loadScheduleForLead(env, leadForRag)
+    : null;
 
   const queryText = buildRagQuery(
     inboundText,
@@ -145,7 +163,8 @@ export async function generateAiReply(
     const { text } = welcomeReplyFromLead(
       ctx.lead,
       scheduleLine,
-      dbSchedule
+      dbSchedule,
+      scheduling
     );
     return {
       text,
@@ -154,30 +173,13 @@ export async function generateAiReply(
         stage: "Discovery",
         note: `Welcome SMS from form: ${ctx.lead.interest} at ${ctx.lead.location}.`,
       },
-      assessment: "Welcome sent — free trial offered",
+      assessment: scheduling
+        ? "Welcome sent — free trial offered"
+        : "Welcome sent — handoff to team",
       preview: text.slice(0, 53) + (text.length > 53 ? "..." : ""),
       status: "engaged",
       statusLabel: "Engaged",
     };
-  }
-
-  if (needsQualification(ctx.lead)) {
-    const qualReply = await handleQualificationTurn(
-      env,
-      ctx.lead,
-      inboundText,
-      ctx.history
-    );
-    if (qualReply) return qualReply;
-  }
-
-  if (
-    ctx.lead.status === "booked" &&
-    (ctx.lead.trialConfirmedAt ||
-      ctx.lead.trialSlotLabel ||
-      ctx.lead.trialSlot)
-  ) {
-    return handlePostBookingMessage(env, ctx, inboundText);
   }
 
   const topicCheck = checkTopic({
@@ -202,49 +204,77 @@ export async function generateAiReply(
     };
   }
 
-  // Silently update the lead profile with anything we can learn from this message.
-  // Runs regardless of which flow handles the reply (booking, LLM, etc.).
-  await learnFromMessage(env, ctx.lead, inboundText, ctx.history);
-
-  const bookingReply = await runHumanBookingFlow(
-    env,
-    leadId,
-    ctx.lead,
-    inboundText,
-    dbSchedule,
-    ctx.history
-  );
-  if (bookingReply) {
-    return bookingReply;
+  if (
+    scheduling &&
+    ctx.lead.status === "booked" &&
+    (ctx.lead.trialConfirmedAt ||
+      ctx.lead.trialSlotLabel ||
+      ctx.lead.trialSlot)
+  ) {
+    return handlePostBookingMessage(env, ctx, inboundText);
   }
 
-  if (dbSchedule?.slots.length) {
-    const choice = resolveScheduleChoice(
+  const requiredFields = await getEffectiveRequiredFieldsForOrg(env);
+  if (needsQualification(ctx.lead, requiredFields)) {
+    const qualReply = await handleQualificationTurn(
+      env,
+      ctx.lead,
+      inboundText,
+      ctx.history
+    );
+    if (qualReply) return qualReply;
+  }
+
+  await learnFromMessage(env, ctx.lead, inboundText, ctx.history);
+
+  await captureHandoffSignals(
+    env,
+    leadId,
+    inboundText,
+    ctx.lead.notes ?? []
+  );
+
+  if (scheduling) {
+    const bookingReply = await runHumanBookingFlow(
+      env,
+      leadId,
+      ctx.lead,
       inboundText,
       dbSchedule,
       ctx.history
     );
-    if (choice) {
-      if (isAffirmativeBooking(inboundText)) {
-        const res = await confirmTrial(env, leadId, choice, {
-          schedule: dbSchedule,
-          history: ctx.history,
-        });
+    if (bookingReply) {
+      return bookingReply;
+    }
+
+    if (dbSchedule?.slots.length) {
+      const choice = resolveScheduleChoice(
+        inboundText,
+        dbSchedule,
+        ctx.history
+      );
+      if (choice) {
+        if (isAffirmativeBooking(inboundText)) {
+          const res = await confirmTrial(env, leadId, choice, {
+            schedule: dbSchedule,
+            history: ctx.history,
+          });
+          const refreshed = (await getLead(env, leadId)) ?? ctx.lead;
+          const reply = buildConfirmReply(refreshed, choice, {
+            enthusiastic: isSoftAffirmation(inboundText),
+            schedule: dbSchedule,
+            history: ctx.history,
+          });
+          if (res.alreadyConfirmed) reply.skipSms = true;
+          return reply;
+        }
+        await proposeTrial(env, leadId, choice);
         const refreshed = (await getLead(env, leadId)) ?? ctx.lead;
-        const reply = buildConfirmReply(refreshed, choice, {
-          enthusiastic: isSoftAffirmation(inboundText),
+        return buildProposeReply(refreshed, choice, {
           schedule: dbSchedule,
           history: ctx.history,
         });
-        if (res.alreadyConfirmed) reply.skipSms = true;
-        return reply;
       }
-      await proposeTrial(env, leadId, choice);
-      const refreshed = (await getLead(env, leadId)) ?? ctx.lead;
-      return buildProposeReply(refreshed, choice, {
-        schedule: dbSchedule,
-        history: ctx.history,
-      });
     }
   }
 
@@ -265,6 +295,8 @@ export async function generateAiReply(
 
   const replyKnowledge = filterKnowledgeForReply(knowledgeChunks);
 
+  const programmeAliases = await getProgrammeAliases(env);
+
   try {
     const structuredHistory = buildStructuredHistoryForLlm(
       ctx.history,
@@ -278,13 +310,19 @@ export async function generateAiReply(
           ctx.aiConfig,
           ctx.locationOverride,
           replyKnowledge,
-          ctx.intakeContextBlock
+          ctx.intakeContextBlock,
+          {
+            schedulingEnabled: scheduling,
+            presetId: ctx.aiConfig.preset_id,
+          }
         ),
       },
       ...structuredHistory,
       {
         role: "user",
-        content: buildCurrentTurnPrompt(ctx, inboundText),
+        content: buildCurrentTurnPrompt(ctx, inboundText, {
+          schedulingEnabled: scheduling,
+        }),
       },
     ];
 
@@ -451,8 +489,9 @@ export async function generateAiReply(
 
     // LLM picked the wrong class (common on form leads) — use structured confirm instead.
     if (
+      scheduling &&
       dbSchedule?.slots.length &&
-      replyUsesWrongProgramme(finalText, ctx.lead)
+      replyUsesWrongProgramme(finalText, ctx.lead, programmeAliases)
     ) {
       const slot = structuredBookingOverride(
         ctx.lead,
@@ -476,7 +515,9 @@ export async function generateAiReply(
     }
 
     // Post-LLM: if the reply contains booking language, back it with a real DB write.
-    const bookingIntent = detectBookingIntentInReply(finalText);
+    const bookingIntent = scheduling
+      ? detectBookingIntentInReply(finalText)
+      : null;
     if (bookingIntent) {
       const slot =
         ctx.lead.trialProposed ??
@@ -496,7 +537,7 @@ export async function generateAiReply(
               history: ctx.history,
             });
             const refreshed = (await getLead(env, leadId)) ?? ctx.lead;
-            if (replyUsesWrongProgramme(finalText, ctx.lead)) {
+            if (replyUsesWrongProgramme(finalText, ctx.lead, programmeAliases)) {
               const reply = buildConfirmReply(refreshed, slot, {
                 schedule: dbSchedule,
                 history: ctx.history,

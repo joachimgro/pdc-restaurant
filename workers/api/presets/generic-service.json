@@ -1,0 +1,23 @@
+{
+  "id": "generic-service",
+  "label": "Generic service business",
+  "defaultTone": "Friendly, professional, concise — like a helpful team member texting back.",
+  "defaultGoals": "Qualify the lead, answer questions from the knowledge base, capture preferences, and hand off to staff.",
+  "defaultRules": "Never invent pricing or availability. Answer from Knowledge only. Keep SMS under 300 characters.",
+  "fieldLabels": {
+    "interest": "service",
+    "location": "location",
+    "trial": "free consultation"
+  },
+  "requiredFields": ["name", "interest"],
+  "qualificationTemplates": {
+    "greeting": "Hey! Happy to help — what's your name and what {{interest_label}} are you interested in?",
+    "need_name": "Happy to help! What's your name?",
+    "need_interest": "Hey{{first_name}}! What {{interest_label}} are you interested in?",
+    "need_location": "We've got {{location_names}} — which {{location_label}} is nearest you?",
+    "need_name_and_interest": "What's your name and what {{interest_label}} are you looking for?",
+    "need_all": "What's your name and what {{interest_label}} are you looking for?",
+    "qualified": "Thanks{{first_name}}! What days or times usually work for you? Someone from the team will be in touch to confirm your {{trial_label}}."
+  },
+  "programmeAliases": {}
+}

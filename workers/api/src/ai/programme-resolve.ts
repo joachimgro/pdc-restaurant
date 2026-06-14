@@ -1,43 +1,29 @@
 import type { Lead } from "@lead-intake/shared-types";
 import type { ProgrammeSchedule } from "../db/location-schedules";
 
-const PROGRAMME_ALIASES: Record<string, string> = {
-  bjj: "BJJ",
-  "jiu jitsu": "BJJ",
-  "jiu-jitsu": "BJJ",
-  "brazilian jiu jitsu": "BJJ",
-  mma: "MMA",
-  "mixed martial arts": "MMA",
-  "muay thai": "Muay Thai",
-  muaythai: "Muay Thai",
-  thai: "Muay Thai",
-  kickboxing: "Kickboxing",
-  "kick boxing": "Kickboxing",
-  wrestling: "Wrestling",
-  boxing: "Boxing",
-};
+type HistoryLine = { role: string; text: string };
 
 /** Scan text for an explicit programme name (longest alias first). */
-export function extractProgrammeFromText(text: string): string | undefined {
+export function extractProgrammeFromText(
+  text: string,
+  aliases: Record<string, string> = {}
+): string | undefined {
   const lower = text.toLowerCase();
-  const aliases = Object.keys(PROGRAMME_ALIASES).sort(
-    (a, b) => b.length - a.length
-  );
-  for (const key of aliases) {
-    if (lower.includes(key)) return PROGRAMME_ALIASES[key];
+  const keys = Object.keys(aliases).sort((a, b) => b.length - a.length);
+  for (const key of keys) {
+    if (lower.includes(key)) return aliases[key];
   }
   return undefined;
 }
 
-type HistoryLine = { role: string; text: string };
-
 /** Prefer the most recent AI recommendation in the thread. */
 export function inferProgrammeFromHistory(
-  history: HistoryLine[]
+  history: HistoryLine[],
+  aliases: Record<string, string> = {}
 ): string | undefined {
   for (const msg of [...history].reverse()) {
     if (msg.role !== "ai") continue;
-    const found = extractProgrammeFromText(msg.text);
+    const found = extractProgrammeFromText(msg.text, aliases);
     if (found) return found;
   }
   return undefined;
@@ -53,12 +39,14 @@ export function resolveProgrammeLabel(
   opts?: {
     schedule?: ProgrammeSchedule | null;
     history?: HistoryLine[];
+    aliases?: Record<string, string>;
   }
 ): string | undefined {
   if (!isUnknownInterest(lead.interest)) return lead.interest;
 
+  const aliases = opts?.aliases ?? {};
   const fromHistory = opts?.history
-    ? inferProgrammeFromHistory(opts.history)
+    ? inferProgrammeFromHistory(opts.history, aliases)
     : undefined;
   if (fromHistory) return fromHistory;
 

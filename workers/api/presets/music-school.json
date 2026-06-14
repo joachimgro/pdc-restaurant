@@ -1,0 +1,31 @@
+{
+  "id": "music-school",
+  "label": "Music school",
+  "defaultTone": "Warm and encouraging — friendly desk, not corporate.",
+  "defaultGoals": "Help enquirers find the right instrument or lesson. Capture preferred times and hand off for a trial lesson confirmation.",
+  "defaultRules": "Never invent lesson fees or teacher availability. Answer from Knowledge. Trial lessons confirmed by staff when scheduling is off.",
+  "fieldLabels": {
+    "interest": "instrument or lesson",
+    "location": "studio",
+    "trial": "trial lesson"
+  },
+  "requiredFields": ["name", "interest"],
+  "qualificationTemplates": {
+    "greeting": "Hey! What's your name and which {{interest_label}} are you interested in?",
+    "need_name": "Happy to help! What's your name?",
+    "need_interest": "Hey{{first_name}}! Which {{interest_label}} — {{programme_names}}?",
+    "need_location": "We teach at {{location_names}}.",
+    "need_name_and_interest": "What's your name and which {{interest_label}} would you like to try?",
+    "need_all": "What's your name and which {{interest_label}} are you interested in?",
+    "qualified": "Lovely{{first_name}}! What days or times work for a {{trial_label}}? Our team will confirm by phone."
+  },
+  "programmeAliases": {
+    "piano": "Piano",
+    "guitar": "Guitar",
+    "violin": "Violin",
+    "drums": "Drums",
+    "singing": "Singing",
+    "vocals": "Singing",
+    "voice": "Singing"
+  }
+}

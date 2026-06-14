@@ -4,6 +4,15 @@ import { insertDomainEvent } from "../db/events";
 import { getLocationNameById, resolveLocationIdFromText } from "../db/locations";
 import { nowTimeLabel, updateLeadFields } from "../db/leads";
 import {
+  buildTemplateParams,
+  getProgrammeAliases,
+  getQualificationConfig,
+  getEffectiveRequiredFields,
+  type QualificationField,
+} from "../db/ai-qualification-config";
+import { renderTemplate } from "./template-render";
+import { looksLikeQuestion } from "./question-detect";
+import {
   extractProgrammeFromText,
   inferProgrammeFromHistory,
   isUnknownInterest,
@@ -20,57 +29,18 @@ export interface QualificationData {
   childAge?: string | number;
 }
 
-// ─── Programme knowledge ─────────────────────────────────────────────────────
-
-const PROGRAMME_DESCRIPTIONS: Record<string, string> = {
-  BJJ: "ground grappling that uses technique and leverage rather than size or strength — no striking, brilliant for self-defence and building real confidence",
-  MMA: "the most complete martial art — combines striking (punches, kicks) with grappling, covering both standup and ground work",
-  "Muay Thai": "striking with punches, kicks, elbows and knees — great for fitness and coordination, all pad work, sparring is always optional",
-  Kickboxing: "punches and kicks in an upright stance — fitness-focused with bag and pad work, no grappling",
-  Wrestling: "takedowns and ground control — a brilliant base for any martial art or general fitness",
-  Boxing: "punching technique, footwork and head movement — great cardio and a real skill set",
-};
-
-const PROGRAMME_COMPARISON =
-  "BJJ = ground grappling, no striking. MMA = striking + grappling combined. Muay Thai = striking with punches, kicks, elbows and knees. Kickboxing = punches and kicks, fitness-focused.";
-
-const PROGRAMME_ALIASES: Record<string, string> = {
-  bjj: "BJJ",
-  "jiu jitsu": "BJJ",
-  "jiu-jitsu": "BJJ",
-  "jiu_jitsu": "BJJ",
-  "brazilian jiu jitsu": "BJJ",
-  mma: "MMA",
-  "mixed martial arts": "MMA",
-  "muay thai": "Muay Thai",
-  muaythai: "Muay Thai",
-  thai: "Muay Thai",
-  kickboxing: "Kickboxing",
-  "kick boxing": "Kickboxing",
-  wrestling: "Wrestling",
-  boxing: "Boxing",
-  karate: "Karate",
-  judo: "Judo",
-  taekwondo: "Taekwondo",
-};
-
 // ─── Name validation ──────────────────────────────────────────────────────────
 
-/** Words that should never be treated as a person's name. */
 const NON_NAME_WORDS = new Set([
-  // Question / interrogative
   "what", "which", "who", "why", "when", "how", "where",
-  // Pronouns / articles
   "i", "my", "me", "we", "our", "you", "your", "they", "them",
   "he", "she", "it", "its", "the", "a", "an",
-  // This / that
+  "shes", "she's", "hes", "he's", "theyre", "they're", "its",
   "this", "that", "these", "those",
-  // Filler
   "yes", "no", "ok", "okay", "sure", "thanks", "thank",
   "hi", "hey", "hello", "just", "well", "so", "and", "or", "but",
   "for", "from", "with", "about", "like", "want", "need", "been",
   "nice", "good", "great", "yeah", "yep", "nope",
-  // Common sentence starters that get capitalised
   "can", "could", "would", "please", "do", "does", "is", "are", "was",
   "have", "has", "had", "will", "shall", "might", "may",
   "tell", "show", "give", "help", "let", "make", "take",
@@ -79,147 +49,196 @@ const NON_NAME_WORDS = new Set([
   "difference", "between", "classes", "class",
 ]);
 
-function isValidName(candidate: string): boolean {
+function isValidName(candidate: string, aliasValues: string[]): boolean {
   if (!candidate || candidate.length < 2) return false;
   const lower = candidate.toLowerCase();
   if (NON_NAME_WORDS.has(lower)) return false;
-  // Must look like a proper name: starts uppercase, rest lowercase, 2–20 chars
   if (!/^[A-Z][a-z]{1,19}$/.test(candidate)) return false;
-  // Shouldn't be a programme keyword
-  if (Object.values(PROGRAMME_ALIASES).some((v) => v.toLowerCase() === lower))
-    return false;
+  if (aliasValues.some((v) => v.toLowerCase() === lower)) return false;
   return true;
 }
 
-// ─── Text signal detection ────────────────────────────────────────────────────
-
-function extractInterest(text: string): string | undefined {
-  const lower = text.toLowerCase();
-  for (const [key, value] of Object.entries(PROGRAMME_ALIASES)) {
-    if (lower.includes(key)) return value;
-  }
-  return undefined;
+function extractInterest(
+  text: string,
+  aliases: Record<string, string>
+): string | undefined {
+  return extractProgrammeFromText(text, aliases);
 }
 
-function extractName(text: string): string | undefined {
-  // Strong patterns: "I'm Sarah", "My name is Sarah", "It's Sarah", "Call me Sarah"
+function isPronounAgeReply(text: string): boolean {
+  const t = text.trim();
+  return (
+    /^(she|he|they)['']?s?\s+\d/i.test(t) ||
+    /^(she|he|they)\s+is\s+\d/i.test(t) ||
+    /^(year|yr)\s*\d{1,2}\b/i.test(t) ||
+    /^\d{1,2}$/.test(t) ||
+    /^age\s*\d+/i.test(t)
+  );
+}
+
+export type ParseQualificationContext = {
+  /** Parent name already captured — do not re-extract from child-age replies */
+  parentNameEstablished?: boolean;
+  /** Last AI turn asked for child age/year */
+  awaitingChildDetails?: boolean;
+  /** Tuition-style enquiry on behalf of a child */
+  childEnquiry?: boolean;
+};
+
+function extractChild(
+  text: string,
+  ctx?: ParseQualificationContext
+): Pick<QualificationData, "isChild" | "childName" | "childAge"> {
+  const result: Pick<QualificationData, "isChild" | "childName" | "childAge"> = {};
+
+  const childSignal =
+    /\b(my (son|daughter|kid|child|boy|girl)|for (him|her|them)|my daughter|my son)\b/i;
+  if (childSignal.test(text)) result.isChild = true;
+
+  const childNameMatch = text.match(
+    /(?:son|daughter|kid|child|boy|girl)\s+([A-Z][a-z]+)/
+  );
+  if (childNameMatch && isValidName(childNameMatch[1], [])) {
+    result.childName = childNameMatch[1];
+    result.isChild = true;
+  }
+
+  const pronounAge = text.match(
+    /\b(?:she|he|they)['']?s?\s+(\d{1,2})\b/i
+  );
+  if (pronounAge) {
+    const n = parseInt(pronounAge[1], 10);
+    if (n > 0 && n < 25) {
+      result.childAge = n;
+      result.isChild = true;
+    }
+  }
+
+  const yearGroup = text.match(/\b(?:year|yr)\s*(\d{1,2})\b/i);
+  if (yearGroup) {
+    result.childAge = `Year ${yearGroup[1]}`;
+    result.isChild = true;
+  }
+
+  const ageMatch = text.match(
+    /(?:aged?|age)\s*(\d{1,2})\b|(\d{1,2})\s*years?\s*old/i
+  );
+  if (ageMatch) {
+    const parsed = parseInt(ageMatch[1] ?? ageMatch[2] ?? "0", 10);
+    if (parsed > 0 && parsed < 25) {
+      result.childAge = parsed;
+      result.isChild = true;
+    }
+  }
+
+  if (ctx?.awaitingChildDetails && /^\d{1,2}$/.test(text.trim())) {
+    const n = parseInt(text.trim(), 10);
+    if (n > 0 && n < 25) {
+      result.childAge = n;
+      result.isChild = true;
+    }
+  }
+
+  return result;
+}
+
+function extractName(
+  text: string,
+  aliasValues: string[],
+  ctx?: ParseQualificationContext
+): string | undefined {
+  if (ctx?.awaitingChildDetails || isPronounAgeReply(text)) {
+    return undefined;
+  }
+
+  if (ctx?.parentNameEstablished && ctx?.childEnquiry) {
+    const strongMatch = text.match(
+      /(?:i(?:'m| am)|my name(?:'s| is)|call me|this is)\s+([A-Z][a-z]{1,19}(?:\s+[A-Z][a-z]{1,19})?)/i
+    );
+    if (strongMatch) {
+      const candidate = strongMatch[1].trim();
+      if (isValidName(candidate.split(" ")[0], aliasValues))
+        return candidate.trim();
+    }
+    return undefined;
+  }
+
   const strongMatch = text.match(
     /(?:i(?:'m| am)|my name(?:'s| is)|it'?s|call me|this is)\s+([A-Z][a-z]{1,19}(?:\s+[A-Z][a-z]{1,19})?)/i
   );
   if (strongMatch) {
     const candidate = strongMatch[1].trim();
-    if (isValidName(candidate.split(" ")[0])) return candidate.trim();
+    if (isValidName(candidate.split(" ")[0], aliasValues)) return candidate.trim();
   }
 
-  // Name-first pattern: "Joachim and probs mma", "Sarah, I wanted to ask..."
-  // Matches a proper name immediately followed by comma, "and", "or", "here", "but"
   const nameFirstMatch = text.trim().match(
-    /^([A-Z][a-z]{1,19})(?:\s*[,!]|\s+(?:and|or|here|but|so)\b)/
+    /^([A-Z][a-z]{1,19})(?:\s*[,!]|\s+(?:and|or|here|but|so|i)\b)/
   );
-  if (nameFirstMatch && isValidName(nameFirstMatch[1])) {
+  if (nameFirstMatch && isValidName(nameFirstMatch[1], aliasValues)) {
     return nameFirstMatch[1];
   }
 
-  // Short message fallback: 1–3 words, first valid name wins (e.g. "Abigail Petts")
   const words = text.trim().split(/\s+/);
-  if (words.length <= 3) {
+  if (words.length <= 3 && !ctx?.childEnquiry) {
     for (const word of words) {
       const clean = word.replace(/[^A-Za-z]/g, "");
-      if (isValidName(clean)) return clean;
+      if (isValidName(clean, aliasValues)) return clean;
     }
   }
 
   return undefined;
 }
 
-function extractChild(text: string): Pick<QualificationData, "isChild" | "childName" | "childAge"> {
-  const result: Pick<QualificationData, "isChild" | "childName" | "childAge"> = {};
-
-  const childSignal = /\b(my (son|daughter|kid|child|boy|girl)|for (him|her|them)|(he|she)('s| is))\b/i;
-  if (childSignal.test(text)) result.isChild = true;
-
-  const childNameMatch = text.match(
-    /(?:son|daughter|kid|child|boy|girl)\s+([A-Z][a-z]+)/
-  );
-  if (childNameMatch && isValidName(childNameMatch[1])) {
-    result.childName = childNameMatch[1];
-    result.isChild = true;
-  }
-
-  const ageMatch = text.match(
-    /(?:(?:he|she|they)(?:'s| is| are)|aged?|age)\s*(\d+)|(\d+)\s*years?\s*old/i
-  );
-  if (ageMatch) {
-    const parsed = parseInt(ageMatch[1] ?? ageMatch[2] ?? "0", 10);
-    if (parsed > 0) result.childAge = parsed;
-  }
-
-  return result;
-}
-
-/** Detect whether the message is asking about a specific programme ("what is BJJ?"). */
-function detectWhatIsQuestion(text: string): string | null {
-  const match = text.match(
-    /\bwhat(?:'?s| is)\b.{0,30}\b(bjj|mma|muay thai|kickboxing|wrestling|boxing|jiu.?jitsu|martial art)\b/i
-  );
-  if (!match) return null;
-  const keyword = match[1].toLowerCase();
-  for (const [alias, canonical] of Object.entries(PROGRAMME_ALIASES)) {
-    if (alias === keyword || canonical.toLowerCase() === keyword) return canonical;
-  }
-  return null;
-}
-
-/** Detect whether the message asks to compare programmes. */
-function detectComparisonQuestion(text: string): boolean {
-  return /\b(difference|compare|vs\.?|versus|between|better|which.{0,20}(should|would)|what.{0,20}(suit|right|best for me))\b/i.test(
-    text
-  );
-}
-
-/** Detect whether the message asks which locations we have. */
-function detectLocationQuestion(text: string): boolean {
-  // "which one" alone is too generic — must have a location-type word nearby
-  return /\b(which\s+(location|branch|gym|place)|where\s+(are\s+you|do\s+you|is\s+that|is\s+it)|what\s+(location|branch|area)|near\s+(me|us)|closest\s+branch|nearest\s+branch|where.{0,20}(based|located)|do\s+you\s+have.{0,20}(branch|location|gym))\b/i.test(
-    text
-  );
-}
-
-/** Detect goal/motivation questions — undecided leads asking what's right for them. */
-function detectGoalQuestion(text: string): boolean {
-  return /\b(beginner.{0,20}friendly|easiest|best\s+(for|to)\s+start|where\s+do\s+i\s+start|don'?t\s+know\s+which|not\s+sure\s+which|which\s+(should|would)|what'?s\s+(best|right|good)\s+for\s+(me|a\s+beginner)|help\s+me\s+(choose|decide|pick)|what\s+(do\s+you\s+recommend|would\s+you\s+suggest)|goal|trying\s+to\s+get|looking\s+to\s+(get\s+fit|lose|build|learn|improve)|good\s+for\s+(fitness|self.defence|confidence|weight))\b/i.test(
-    text
-  );
-}
-
-const GOAL_QUESTION = "What are you looking to get out of it — get fitter, learn self-defence, build confidence, or just try something new? That'll help me point you in the right direction.";
-
-/** Goal → best programme recommendation. */
-function goalRecommendation(text: string): string | null {
-  const t = text.toLowerCase();
-  if (/\b(self.defenc|defend|protect|street|real.?world|practical)\b/.test(t)) {
-    return "For self-defence, BJJ or MMA are the strongest options — BJJ teaches control and submissions, MMA adds striking on top. Both are practical and tested. Which appeals more?";
-  }
-  if (/\b(fit|cardio|weight|lose|burn|healthy|tone|energy|shape)\b/.test(t)) {
-    return "For fitness, all our classes work really well — but Muay Thai and Kickboxing give you the highest-intensity cardio, while BJJ builds strength in a more technique-led way. Fancy trying one?";
-  }
-  if (/\b(confiden|mental|focus|discipline|stress|wellbeing|calm)\b/.test(t)) {
-    return "Lots of our members come in for the mental side — discipline, focus, stress relief. BJJ is especially good for this — it's almost like a physical chess game. Want to give it a go?";
-  }
-  if (/\b(kids?|child|son|daughter|boy|girl)\b/.test(t)) {
-    return "For kids, BJJ is brilliant — it builds confidence, discipline and coordination without any striking. We have kids classes at most branches. How old are they?";
-  }
-  return null;
-}
-
-// ─── Parse ────────────────────────────────────────────────────────────────────
-
-export function parseQualificationReply(text: string): QualificationData {
+export function parseQualificationReply(
+  text: string,
+  aliases: Record<string, string> = {},
+  ctx?: ParseQualificationContext
+): QualificationData {
+  const aliasValues = [...new Set(Object.values(aliases))];
   return {
-    name: extractName(text),
-    interest: extractInterest(text),
-    ...extractChild(text),
+    name: extractName(text, aliasValues, ctx),
+    interest: extractInterest(text, aliases),
+    ...extractChild(text, ctx),
   };
+}
+
+export function isAwaitingChildDetailsInHistory(
+  history: { role: string; text: string }[]
+): boolean {
+  const lastAi = [...history].reverse().find((h) => h.role === "ai");
+  if (!lastAi) return false;
+  return /\b(how old|what year|year are they|year is (your |they|she|he))/i.test(
+    lastAi.text
+  );
+}
+
+export function buildParseContext(
+  lead: Lead,
+  history: { role: string; text: string }[],
+  requiredFields: QualificationField[]
+): ParseQualificationContext {
+  const childEnquiry =
+    requiredFields.includes("child") ||
+    !!lead.child ||
+    history.some(
+      (h) =>
+        h.role === "lead" &&
+        /\b(my (son|daughter|kid|child)|for my (son|daughter))\b/i.test(h.text)
+    );
+  const parentNameEstablished = !!savedName(lead);
+  const awaitingChildDetails =
+    childEnquiry &&
+    parentNameEstablished &&
+    isAwaitingChildDetailsInHistory(history);
+
+  return { childEnquiry, parentNameEstablished, awaitingChildDetails };
+}
+
+function childDetailsMissing(lead: Lead): boolean {
+  if (!lead.child) return true;
+  const age = lead.child.age;
+  if (age === undefined || age === null || age === "" || age === "—") return true;
+  return false;
 }
 
 // ─── DB update ────────────────────────────────────────────────────────────────
@@ -250,17 +269,41 @@ export async function applyQualificationUpdate(
     const locName = await getLocationNameById(env, data.locationId);
     timelineParts.push({ bold: "Location confirmed", text: ` · ${locName}` });
   }
-  if (data.isChild && (data.childName || data.childAge)) {
-    const childJson = JSON.stringify({
-      name: data.childName ?? "—",
-      age: data.childAge ?? "—",
+  if (data.isChild || data.childAge != null || data.childName) {
+    const existingRow = await env.DB.prepare(
+      `SELECT child_json FROM leads WHERE id = ?`
+    )
+      .bind(leadId)
+      .first<{ child_json: string | null }>();
+
+    let child = {
+      name: "—",
+      age: "—" as string | number,
       experience: "First-timer",
-    });
-    sets.push("child_json = COALESCE(child_json, ?)");
+    };
+    if (existingRow?.child_json) {
+      try {
+        child = { ...child, ...JSON.parse(existingRow.child_json) };
+      } catch {
+        /* keep defaults */
+      }
+    }
+    if (data.childName) child.name = data.childName;
+    if (data.childAge != null) child.age = data.childAge;
+
+    const childJson = JSON.stringify(child);
+    sets.push("child_json = ?");
     binds.push(childJson);
-    const childDesc = [data.childName, data.childAge ? `age ${data.childAge}` : null]
-      .filter(Boolean).join(", ");
-    timelineParts.push({ bold: "Child added", text: ` · ${childDesc}` });
+    const childDesc = [
+      child.name !== "—" ? child.name : null,
+      child.age !== "—" ? `age ${child.age}` : null,
+    ]
+      .filter(Boolean)
+      .join(", ");
+    timelineParts.push({
+      bold: existingRow?.child_json ? "Child updated" : "Child added",
+      text: ` · ${childDesc || "details captured"}`,
+    });
   }
 
   if (sets.length > 1) {
@@ -269,7 +312,6 @@ export async function applyQualificationUpdate(
       .bind(...binds)
       .run();
 
-    // Insert one timeline event per fact (avoids them running together in the UI)
     if (timelineParts.length > 0) {
       const sortRow = await env.DB.prepare(
         `SELECT COALESCE(MAX(sort_order), -1) + 1 as n FROM timeline_events WHERE lead_id = ?`
@@ -306,138 +348,81 @@ export async function applyQualificationUpdate(
   }
 }
 
-// ─── Qualification check ──────────────────────────────────────────────────────
-
-export function needsQualification(lead: Lead): boolean {
+function isSmsLead(lead: Lead): boolean {
   const source = (lead.source ?? "").toLowerCase();
-  const isSmsLead = source === "sms" || source === "telnyx" || source === "inbound";
-  if (!isSmsLead) return false;
-  // Still qualifying if missing interest OR location not yet confirmed
-  const missingInterest = !lead.interest || lead.interest === "Unknown";
-  const missingLocation = lead.locationConfirmed === false;
-  return missingInterest || missingLocation;
+  return source === "sms" || source === "telnyx" || source === "inbound";
+}
+
+function fieldMissing(lead: Lead, field: QualificationField, name?: string): boolean {
+  switch (field) {
+    case "name": {
+      const n = name ?? lead.name?.trim();
+      if (!n) return true;
+      if (/^\+?\d[\d\s\-]{6,}$/.test(n)) return true;
+      if (/^sms-/i.test(n)) return true;
+      return false;
+    }
+    case "interest":
+      return !lead.interest || lead.interest === "Unknown";
+    case "location":
+      return lead.locationConfirmed === false;
+    case "child":
+      return childDetailsMissing(lead);
+    default:
+      return false;
+  }
+}
+
+export function needsQualification(
+  lead: Lead,
+  requiredFields: QualificationField[] = ["interest", "location"]
+): boolean {
+  if (!isSmsLead(lead)) return false;
+  return requiredFields.some((f) => fieldMissing(lead, f));
 }
 
 function priorAiCount(history: { role: string }[]): number {
   return history.filter((h) => h.role === "ai").length;
 }
 
-/** Pull whatever name was already saved on the lead (if it looks real). */
 function savedName(lead: Lead): string | undefined {
   const n = lead.name?.trim();
   if (!n) return undefined;
-  // If name looks like a phone number, it's the default placeholder — not a real name
   if (/^\+?\d[\d\s\-]{6,}$/.test(n)) return undefined;
-  // If it's a slug like "sms-12345678"
   if (/^sms-/i.test(n)) return undefined;
-  return n.split(" ")[0]; // first name only
+  return n.split(" ")[0];
 }
 
-// ─── Reply builder ────────────────────────────────────────────────────────────
-
-function buildQualificationReply(
+async function buildQualificationReply(
+  env: Env,
   parsed: QualificationData,
   existingName: string | undefined,
   inboundText: string,
   lead: Lead,
   locationName: string,
   resolvedInterest: string | undefined,
-  locationConfirmed: boolean
-): string {
-  const name = parsed.name ?? existingName;
+  locationConfirmed: boolean,
+  requiredFields: QualificationField[],
+  hasChild: boolean
+): Promise<string> {
+  const config = await getQualificationConfig(env);
+  const params = await buildTemplateParams(env, {
+    firstName: existingName ?? parsed.name,
+    interest: resolvedInterest,
+    locationName,
+  });
+  const templates = config.templates;
+
+  const name = existingName ?? parsed.name;
   const interest = resolvedInterest;
-  const greeting = name ? `Hey ${name}!` : "Hey!";
-
-  const whatIs = detectWhatIsQuestion(inboundText);
-  const isComparison = detectComparisonQuestion(inboundText);
-  const isGoalQ = detectGoalQuestion(inboundText);
-
-  const needsName = !name;
+  const needsName = fieldMissing(lead, "name", name);
   const needsInterest = !interest;
-  const needsLocation = !locationConfirmed;
+  const needsLocation =
+    requiredFields.includes("location") && !locationConfirmed;
+  const needsChild = requiredFields.includes("child") && !hasChild;
 
-  // Did they just confirm location in this very message?
-  const justConfirmedLocation = !!parsed.locationId;
-
-  // ── Answer their question first ────────────────────────────────────────────
-
-  // Goal question (beginner-friendly, what's right for me?) — consult before pushing class choice
-  if (isGoalQ && needsInterest) {
-    const goalRec = goalRecommendation(inboundText);
-    if (goalRec) {
-      // Give a direct recommendation
-      const nameAck = name ? `${greeting} ` : "";
-      const locAck = justConfirmedLocation ? `${locationName} is a great branch! ` : "";
-      const nameMissing = needsName ? " And what's your name?" : "";
-      return `${nameAck}${locAck}${goalRec}${nameMissing}`;
-    }
-    // No specific goal detected — ask consultatively
-    const nameAck = name ? `${greeting} ` : "";
-    const locAck = justConfirmedLocation ? `${locationName} is great! ` : "";
-    const nameMissing = needsName ? " And what's your name?" : "";
-    return `${nameAck}${locAck}${GOAL_QUESTION}${nameMissing}`;
-  }
-
-  // Specific programme question
-  let prefix = "";
-  if (whatIs && PROGRAMME_DESCRIPTIONS[whatIs]) {
-    prefix = `${whatIs} is ${PROGRAMME_DESCRIPTIONS[whatIs]}. `;
-  } else if (isComparison) {
-    prefix = `${PROGRAMME_COMPARISON} `;
-  }
-
-  // Location acknowledgement — if they just told us, say so warmly
-  const locAck = justConfirmedLocation ? `${locationName} — great! ` : "";
-
-  // ── State machine replies ──────────────────────────────────────────────────
-
-  // Fully qualified — move to booking
-  if (!needsName && !needsInterest && !needsLocation) {
-    const who = parsed.childName ?? (parsed.isChild ? "your child" : name!);
-    if (parsed.isChild) {
-      return `${prefix}${locAck}${greeting} So ${interest} for ${who} at our ${locationName} branch — brilliant! Which days work best for a free trial?`;
-    }
-    return `${prefix}${locAck}${greeting} ${interest} at our ${locationName} branch — great choice. Which days work best for a free trial?`;
-  }
-
-  // Have name + interest, need location
-  if (!needsName && !needsInterest && needsLocation) {
-    return `${prefix}${greeting} We've got ${interest} at our Manchester, Leeds, Bolton and Stockport branches — which is closest to you?`;
-  }
-
-  // Have name + location, need interest — be consultative
-  if (!needsName && !needsLocation && needsInterest) {
-    if (prefix) return `${prefix}${locAck}${greeting} Which class takes your fancy — BJJ, MMA, Muay Thai or Kickboxing?`;
-    return `${locAck}${greeting} ${GOAL_QUESTION}`;
-  }
-
-  // Have interest + location, need name
-  if (!needsInterest && !needsLocation && needsName) {
-    if (prefix) return `${prefix}${locAck}Happy to help with ${interest} at ${locationName}! What's your name?`;
-    return `${locAck}${interest} at ${locationName} — great shout! What's your name?`;
-  }
-
-  // Have name, need both interest and location
-  if (!needsName && needsInterest && needsLocation) {
-    if (prefix) return `${prefix}${greeting} Which class are you after, and which branch is nearest — Manchester, Leeds, Bolton or Stockport?`;
-    return `${greeting} Two quick ones — ${GOAL_QUESTION.replace("What are", "what are")} And which of our branches is closest — Manchester, Leeds, Bolton or Stockport?`;
-  }
-
-  // Have interest only, need name + location
-  if (needsName && !needsInterest && needsLocation) {
-    if (prefix) return `${prefix}Happy to help with ${interest}! What's your name and which branch — Manchester, Leeds, Bolton or Stockport?`;
-    return `${interest} is a great shout! What's your name and which of our branches is nearest to you?`;
-  }
-
-  // Have location only, need name + interest
-  if (needsName && needsInterest && !needsLocation) {
-    if (prefix) return `${prefix}${locAck}Happy to help — what's your name and which class are you after?`;
-    return `${locAck}Happy to help at ${locationName}! What's your name and which class are you thinking — BJJ, MMA, Muay Thai or Kickboxing?`;
-  }
-
-  // Need everything — prefix answers a question they asked
-  if (prefix) {
-    return `${prefix}Happy to help! What's your name, which class, and which branch — Manchester, Leeds, Bolton or Stockport?`;
+  if (!needsName && !needsInterest && !needsLocation && !needsChild) {
+    return renderTemplate(templates.qualified ?? DEFAULT_QUALIFIED, params);
   }
 
   const isGreeting =
@@ -446,31 +431,86 @@ function buildQualificationReply(
       inboundText.trim()
     );
 
-  if (isGreeting) {
-    return `Hey! Happy to help — what's your name and which class are you interested in? We're in Manchester, Leeds, Bolton and Stockport.`;
+  if (isGreeting && (needsName || needsInterest)) {
+    return renderTemplate(templates.greeting ?? templates.need_all, params);
   }
 
-  return `Happy to help! Quick one — what's your name, which class (BJJ, MMA, Muay Thai or Kickboxing), and which branch is nearest?`;
+  if (needsChild && !needsName && !needsInterest && !needsLocation) {
+    return renderTemplate(
+      templates.need_child ??
+        "Thanks{{first_name}}! How old is your child, or what year are they in?",
+      params
+    );
+  }
+
+  if (needsName && needsInterest && needsLocation) {
+    return renderTemplate(templates.need_all, params);
+  }
+  if (needsName && needsInterest) {
+    return renderTemplate(templates.need_name_and_interest, params);
+  }
+  if (needsName && needsLocation) {
+    return renderTemplate(
+      templates.need_name_and_interest ?? templates.need_name,
+      params
+    );
+  }
+  if (needsInterest && needsLocation) {
+    return renderTemplate(
+      templates.need_all ?? templates.need_interest,
+      params
+    );
+  }
+  if (needsName && needsChild) {
+    return renderTemplate(templates.need_all ?? templates.need_name, params);
+  }
+  if (needsName) {
+    return renderTemplate(templates.need_name, params);
+  }
+  if (needsInterest) {
+    return renderTemplate(templates.need_interest, params);
+  }
+  if (needsLocation) {
+    return renderTemplate(templates.need_location, params);
+  }
+  if (needsChild) {
+    return renderTemplate(
+      templates.need_child ??
+        "Thanks{{first_name}}! How old is your child, or what year are they in?",
+      params
+    );
+  }
+
+  return renderTemplate(templates.greeting ?? templates.need_all, params);
 }
 
-// ─── Universal profile learning ───────────────────────────────────────────────
+const DEFAULT_QUALIFIED =
+  "Great{{first_name}}! {{interest}} at {{location_name}} — which days work best for a {{trial_label}}?";
 
-/**
- * Run on EVERY inbound message (not just during qualification).
- * Extracts name / child info / interest from the text and persists to DB
- * only when the lead's current record is missing that data.
- * Returns true if anything was updated.
- */
+function childDetailsSatisfied(
+  lead: Lead,
+  parsed: QualificationData,
+  required: boolean
+): boolean {
+  if (!required) return true;
+  if (parsed.childAge != null) return true;
+  if (!childDetailsMissing(lead)) return true;
+  return false;
+}
+
 export async function learnFromMessage(
   env: Env,
   lead: Lead,
   inboundText: string,
   history: { role: string; text: string }[] = []
 ): Promise<boolean> {
-  const parsed = parseQualificationReply(inboundText);
+  const config = await getQualificationConfig(env);
+  const requiredFields = getEffectiveRequiredFields(env, config.requiredFields);
+  const parseCtx = buildParseContext(lead, history, requiredFields);
+  const aliases = await getProgrammeAliases(env);
+  const parsed = parseQualificationReply(inboundText, aliases, parseCtx);
   const patch: QualificationData = {};
 
-  // Name: update only if the current stored name looks like a placeholder
   const currentName = lead.name?.trim() ?? "";
   const nameIsPlaceholder =
     !currentName ||
@@ -478,29 +518,27 @@ export async function learnFromMessage(
     /^sms-/i.test(currentName) ||
     /^(unknown|lead|user|customer|new)$/i.test(currentName);
 
-  if (parsed.name && nameIsPlaceholder) {
+  if (parsed.name && nameIsPlaceholder && !parseCtx.awaitingChildDetails) {
     patch.name = parsed.name;
   }
 
-  // Interest: update only if currently Unknown
   if (isUnknownInterest(lead.interest)) {
     if (parsed.interest) {
       patch.interest = parsed.interest;
     } else if (history.length > 0) {
-      const fromHistory = inferProgrammeFromHistory(history);
+      const fromHistory = inferProgrammeFromHistory(history, aliases);
       if (fromHistory) patch.interest = fromHistory;
     }
   }
 
-  // Child info: update only if not already recorded
-  if (parsed.isChild && !lead.child) {
-    patch.isChild = parsed.isChild;
+  if (parsed.childAge != null || (parsed.isChild && (parsed.childName || parsed.childAge))) {
+    patch.isChild = true;
     patch.childName = parsed.childName;
     patch.childAge = parsed.childAge;
   }
 
   const hasUpdates =
-    !!patch.name || !!patch.interest || !!patch.isChild;
+    !!patch.name || !!patch.interest || patch.childAge != null || !!patch.isChild;
 
   if (hasUpdates) {
     await applyQualificationUpdate(env, lead.id, patch);
@@ -509,7 +547,6 @@ export async function learnFromMessage(
   return hasUpdates;
 }
 
-/** Persist inferred programme when the lead record still says Unknown. */
 export async function ensureLeadProgramme(
   env: Env,
   leadId: string,
@@ -519,14 +556,13 @@ export async function ensureLeadProgramme(
     history?: { role: string; text: string }[];
   }
 ): Promise<string | undefined> {
-  const label = resolveProgrammeLabel(lead, opts);
+  const aliases = await getProgrammeAliases(env);
+  const label = resolveProgrammeLabel(lead, { ...opts, aliases });
   if (label && isUnknownInterest(lead.interest)) {
     await applyQualificationUpdate(env, leadId, { interest: label });
   }
   return label ?? (isUnknownInterest(lead.interest) ? undefined : lead.interest);
 }
-
-// ─── Main handler ─────────────────────────────────────────────────────────────
 
 export async function handleQualificationTurn(
   env: Env,
@@ -534,55 +570,105 @@ export async function handleQualificationTurn(
   inboundText: string,
   history: { role: "lead" | "ai" | "staff"; text: string }[]
 ): Promise<AiReply | null> {
-  if (!needsQualification(lead)) return null;
+  const config = await getQualificationConfig(env);
+  if (!config.enabled) return null;
+  const requiredFields = getEffectiveRequiredFields(env, config.requiredFields);
+  if (!needsQualification(lead, requiredFields)) return null;
 
+  const aliases = await getProgrammeAliases(env);
   const aiCount = priorAiCount(history);
   const existing = savedName(lead);
 
-  // Always parse — even message 1 might contain name/interest/location
-  const parsed = parseQualificationReply(inboundText);
-  const parsedLocationId = await resolveLocationIdFromText(env, inboundText);
-
-  // Only update with confirmed location if it changed from the unconfirmed default
-  const locationChanged =
-    parsedLocationId && parsedLocationId !== lead.locationId;
-  if (parsed.name || parsed.interest || locationChanged || parsed.isChild) {
-    await applyQualificationUpdate(env, lead.id, {
-      ...parsed,
-      locationId: locationChanged ? parsedLocationId : undefined,
-    });
+  if (looksLikeQuestion(inboundText)) {
+    return null;
   }
 
-  const name = parsed.name ?? existing;
-  const interest = parsed.interest ?? (lead.interest !== "Unknown" ? lead.interest : undefined);
-  const locationConfirmed = lead.locationConfirmed !== false || !!parsedLocationId;
+  const parseCtx = buildParseContext(lead, history, requiredFields);
+  const parsed = parseQualificationReply(inboundText, aliases, parseCtx);
+  const parsedLocationId = await resolveLocationIdFromText(env, inboundText);
+
+  const locationChanged =
+    parsedLocationId && parsedLocationId !== lead.locationId;
+
+  const qualPatch: QualificationData = {};
+  if (parsed.name && !parseCtx.parentNameEstablished) qualPatch.name = parsed.name;
+  if (parsed.interest) qualPatch.interest = parsed.interest;
+  if (locationChanged) qualPatch.locationId = parsedLocationId;
+  if (parsed.childAge != null || parsed.isChild) {
+    qualPatch.isChild = true;
+    qualPatch.childName = parsed.childName;
+    qualPatch.childAge = parsed.childAge;
+  }
+
+  if (Object.keys(qualPatch).length > 0) {
+    await applyQualificationUpdate(env, lead.id, qualPatch);
+  }
+
+  const name = existing ?? parsed.name;
+  const interest =
+    parsed.interest ?? (lead.interest !== "Unknown" ? lead.interest : undefined);
   const locationId = parsedLocationId ?? lead.locationId;
   const locationName = locationId
     ? await getLocationNameById(env, locationId)
     : lead.location;
 
-  const gotEnough = !!(name && interest && locationConfirmed);
+  const locationConfirmed =
+    !requiredFields.includes("location") ||
+    lead.locationConfirmed !== false ||
+    !!parsedLocationId;
 
-  // After two failed attempts with nothing, let the LLM take over
+  const childSatisfied = childDetailsSatisfied(
+    lead,
+    parsed,
+    requiredFields.includes("child")
+  );
+
+  // Re-read child age after update for gotEnough when we just parsed age
+  const childSatisfiedNow =
+    childSatisfied ||
+    (parsed.childAge != null && requiredFields.includes("child"));
+
+  const gotEnough = !requiredFields.some((f) => {
+    if (f === "name") return !name;
+    if (f === "interest") return !interest;
+    if (f === "location") return !locationConfirmed;
+    if (f === "child") return !childSatisfiedNow;
+    return false;
+  });
+
   if (aiCount >= 2 && !gotEnough) return null;
 
-  const text = buildQualificationReply(parsed, existing, inboundText, lead, locationName, interest, locationConfirmed);
+  const text = await buildQualificationReply(
+    env,
+    parsed,
+    existing,
+    inboundText,
+    lead,
+    locationName,
+    interest,
+    locationConfirmed,
+    requiredFields,
+    childSatisfiedNow
+  );
 
-  // Save programme when we recommended one (e.g. Muay Thai for fitness) but lead never named a class
-  const inferredFromReply = extractProgrammeFromText(text);
+  const inferredFromReply = extractProgrammeFromText(text, aliases);
   if (inferredFromReply && isUnknownInterest(lead.interest)) {
     await applyQualificationUpdate(env, lead.id, { interest: inferredFromReply });
   }
 
-  const missingParts = [
-    !name && "name",
-    !interest && "interest",
-    !locationConfirmed && "location",
-  ].filter(Boolean).join(", ");
+  const missingParts = requiredFields
+    .filter((f) => {
+      if (f === "name") return !name;
+      if (f === "interest") return !interest;
+      if (f === "location") return !locationConfirmed;
+      if (f === "child") return !childSatisfiedNow;
+      return false;
+    })
+    .join(", ");
 
   const stage = gotEnough ? "Qualifying" : "Discovery";
   const assessment = gotEnough
-    ? `Qualified — ${interest} enquiry`
+    ? `Qualified — ${interest ?? "enquiry"}`
     : `Qualifying — awaiting ${missingParts}`;
 
   return {

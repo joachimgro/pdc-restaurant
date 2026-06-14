@@ -3,6 +3,7 @@ import type { ProgrammeSchedule } from "../db/location-schedules";
 import { confirmTrial, proposeTrial } from "../db/trial-booking";
 import { getLead } from "../db/leads";
 import type { Env } from "../env";
+import { simpleSchedulingEnabled } from "../capabilities";
 import { ensureLeadProgramme } from "./qualification";
 import type { AiReply } from "./pipeline";
 import {
@@ -32,6 +33,8 @@ export async function runHumanBookingFlow(
   schedule: ProgrammeSchedule | null,
   history: HistoryLine[] = []
 ): Promise<AiReply | null> {
+  if (!simpleSchedulingEnabled(env)) return null;
+
   if (isWebsiteIntakePrompt(inboundText)) return null;
 
   if (!schedule?.slots.length) {

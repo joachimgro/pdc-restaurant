@@ -7,6 +7,10 @@ export interface Env {
   CORS_ORIGIN: string;
   /** Set to "true" to enable /admin/seed and /leads/simulate (demo/dev only) */
   ENABLE_DEMO_TOOLS?: string;
+  /** Set to "true" to enable slot booking + Schedule settings UI */
+  ENABLE_SIMPLE_SCHEDULING?: string;
+  /** Set to "true" to enable multi-venue + location in qualification */
+  ENABLE_MULTI_LOCATION?: string;
   /** Set to "true" to use template stub instead of Workers AI */
   AI_DISABLED?: string;
   AI_EMBED_MODEL?: string;

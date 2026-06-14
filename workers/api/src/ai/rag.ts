@@ -6,6 +6,15 @@ export interface RetrievedChunk extends KnowledgeChunk {
   score: number;
 }
 
+/** Playbook chunks belong in code prompts, not RAG retrieval. */
+export function isFactKnowledgeChunk(source: string): boolean {
+  const s = source.toLowerCase();
+  if (s.startsWith("conversation/")) return false;
+  if (s.startsWith("platform/")) return false;
+  if (s === "conversation" || s === "platform-playbook") return false;
+  return true;
+}
+
 export function ragEnabled(env: Env): boolean {
   return Boolean(env.KNOWLEDGE && env.AI);
 }
@@ -51,6 +60,9 @@ export async function retrieveKnowledge(
 
       const meta = m.metadata as Record<string, string> | undefined;
       if (!meta || meta.organization_id !== organizationId) continue;
+
+      const source = meta.source ?? "";
+      if (!isFactKnowledgeChunk(source)) continue;
 
       const chunkLocation = meta.location_id ?? "";
       const isGlobal = !chunkLocation || chunkLocation === "_global";

@@ -1,0 +1,35 @@
+{
+  "id": "tuition-centre",
+  "label": "Tuition centre",
+  "defaultTone": "Warm, reassuring, professional — speak to parents clearly.",
+  "defaultGoals": "Help parents enquire about subjects and support. Capture preferred times and hand off to staff for a free skills assessment.",
+  "defaultRules": "Never promise a specific tutor or slot. Offer a free skills assessment; team confirms by phone. Answer factual questions from Knowledge only.",
+  "fieldLabels": {
+    "interest": "subject",
+    "location": "centre",
+    "trial": "free skills assessment"
+  },
+  "requiredFields": ["name", "interest", "child"],
+  "qualificationTemplates": {
+    "greeting": "Hi! What's your name and which {{interest_label}} are you enquiring about?",
+    "need_name": "Happy to help! What's your name?",
+    "need_interest": "Hey{{first_name}}! Which {{interest_label}} — {{programme_names}}?",
+    "need_location": "We're at {{location_names}}.",
+    "need_name_and_interest": "What's your name and which {{interest_label}} do you need help with?",
+    "need_all": "What's your name, which {{interest_label}}, and how old is your child?",
+    "need_child": "Thanks{{first_name}}! How old is your child, or what year are they in?",
+    "qualified": "Thanks{{first_name}}! What days or times usually work for a {{trial_label}}? Our team will call to confirm."
+  },
+  "programmeAliases": {
+    "maths": "Maths",
+    "math": "Maths",
+    "english": "English",
+    "science": "Science",
+    "physics": "Physics",
+    "chemistry": "Chemistry",
+    "biology": "Biology",
+    "coding": "Coding",
+    "gcse": "GCSE",
+    "fcl": "First Class Learning"
+  }
+}

@@ -34,11 +34,11 @@ export function buildScheduleKnowledgeText(
   const timesText = formatTimesPhrase(times);
   const slotNote =
     times.length > 1
-      ? `There are ${times.length} separate class START times (${times.join(", ")}) — each is its own independent session, not a range. When booking a trial, ask which start time the lead wants.`
+      ? `There are ${times.length} separate session START times (${times.join(", ")}) — each is its own independent slot, not a range. When booking, ask which start time the lead wants.`
       : times.length === 1
-        ? `The class starts at ${times[0]}. This is the start time, not an end time.`
+        ? `Sessions start at ${times[0]}. This is the start time, not an end time.`
         : "";
-  return `${locationName} ${programme}: classes run ${daysText} ${timesText}. ${summary.replace(/^on /, "Schedule: ")} Classes are not held every day — only on the days listed. ${slotNote} When booking a free trial, confirm day and start time, then wait for the lead to say yes before marking booked.`;
+  return `${locationName} ${programme}: runs ${daysText} ${timesText}. ${summary.replace(/^on /, "Schedule: ")} Not every day — only on the days listed. ${slotNote} When booking, confirm day and start time, then wait for the lead to say yes before marking booked.`;
 }
 
 export function scheduleChunkId(locationId: string, programme: string): string {
@@ -142,4 +142,20 @@ export async function syncAllSchedulesForLocation(
   for (const row of results ?? []) {
     await syncScheduleKnowledge(env, locationId, row.programme);
   }
+}
+
+/** Rebuild schedule knowledge chunks for every location in the org. */
+export async function syncAllOrgSchedulesToKnowledge(env: Env): Promise<number> {
+  const { results } = await env.DB.prepare(
+    `SELECT id FROM locations WHERE organization_id = ?`
+  )
+    .bind(env.ORGANIZATION_ID)
+    .all<{ id: string }>();
+
+  let count = 0;
+  for (const loc of results ?? []) {
+    await syncAllSchedulesForLocation(env, loc.id);
+    count++;
+  }
+  return count;
 }
