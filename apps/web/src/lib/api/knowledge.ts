@@ -1,4 +1,4 @@
-import { API_URL } from "./client";
+import { apiFetch } from "./client";
 
 export interface KnowledgeChunkItem {
   id: string;
@@ -31,23 +31,8 @@ export interface KnowledgePreviewResponse {
   aiEnabled: boolean;
 }
 
-async function apiJson<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${API_URL}${path}`, {
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...init?.headers,
-    },
-  });
-  const json = await res.json();
-  if (!res.ok) {
-    throw new Error((json as { error?: string }).error ?? `API ${res.status}`);
-  }
-  return json as T;
-}
-
 export async function fetchKnowledge(): Promise<KnowledgeListResponse> {
-  return apiJson("/admin/knowledge");
+  return apiFetch("/admin/knowledge");
 }
 
 export async function createKnowledgeChunk(input: {
@@ -55,14 +40,14 @@ export async function createKnowledgeChunk(input: {
   text: string;
   locationId: string | null;
 }): Promise<{ ok: boolean; chunk: KnowledgeChunkItem }> {
-  return apiJson("/admin/knowledge", {
+  return apiFetch("/admin/knowledge", {
     method: "POST",
     body: JSON.stringify(input),
   });
 }
 
 export async function deleteKnowledgeChunk(id: string): Promise<void> {
-  await apiJson(`/admin/knowledge/${encodeURIComponent(id)}`, {
+  await apiFetch(`/admin/knowledge/${encodeURIComponent(id)}`, {
     method: "DELETE",
   });
 }
@@ -72,7 +57,7 @@ export async function reindexKnowledge(): Promise<{
   chunkCount: number;
   message: string;
 }> {
-  return apiJson("/admin/knowledge/reindex", { method: "POST" });
+  return apiFetch("/admin/knowledge/reindex", { method: "POST" });
 }
 
 export async function previewKnowledge(input: {
@@ -80,7 +65,7 @@ export async function previewKnowledge(input: {
   locationId?: string;
   interest?: string;
 }): Promise<KnowledgePreviewResponse> {
-  return apiJson("/admin/knowledge/preview", {
+  return apiFetch("/admin/knowledge/preview", {
     method: "POST",
     body: JSON.stringify(input),
   });

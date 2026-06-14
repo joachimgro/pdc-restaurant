@@ -8,10 +8,10 @@ import {
 } from "@lead-intake/shared-types";
 import type { DomainEvent, Lead, StaffTeamMember, StaffUser } from "@lead-intake/shared-types";
 
-const API_URL =
+export const API_URL =
   process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8787";
 
-async function apiFetch<T>(
+export async function apiFetch<T>(
   path: string,
   init?: RequestInit
 ): Promise<T> {
@@ -230,5 +230,3 @@ export function subscribeEvents(
 
   return () => es.close();
 }
-
-export { API_URL };
