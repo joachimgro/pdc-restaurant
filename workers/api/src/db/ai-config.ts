@@ -8,25 +8,35 @@ export interface AiConfigRow {
   rules: string;
   model_reply: string;
   model_judge: string;
+  safe_fallback_message: string | null;
+  intake_context_label: string | null;
 }
+
+const DEFAULT_INTAKE_CONTEXT_LABEL =
+  "(Lead initiated contact via website form)";
+
+const DEFAULT_SAFE_FALLBACK_MESSAGE =
+  "Thanks for your message! A member of our team will be in touch shortly.";
 
 const DEFAULT_CONFIG: Omit<AiConfigRow, "organization_id"> = {
   academy_name: "TODO: Set academy name in Admin → AI Config",
-  tone:
-    "Sound like a real person at the desk — warm, upbeat, human. British English. Contractions welcome. Never robotic.",
+  tone: "Friendly, professional, concise",
   goals:
-    "Be helpful every message. Answer what they asked, then advance toward a free trial or booking. Never repeat the same opener or re-ask answered questions.",
+    "Qualify the lead, answer their questions using the knowledge base, and book a trial session",
   rules:
-    "Under 300 characters. One clear next step per message. No medical advice. Facts from knowledge only. Never dead-end without something useful.",
+    "Never discuss pricing unless it's in the knowledge base. Never make promises about availability without checking schedules.",
   model_reply: "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
   model_judge: "@cf/meta/llama-3.1-8b-instruct",
+  safe_fallback_message: null,
+  intake_context_label: null,
 };
 
 export async function getAiConfig(
   env: Env
 ): Promise<AiConfigRow & { organization_id: string }> {
   const row = await env.DB.prepare(
-    `SELECT organization_id, academy_name, tone, goals, rules, model_reply, model_judge
+    `SELECT organization_id, academy_name, tone, goals, rules, model_reply, model_judge,
+            safe_fallback_message, intake_context_label
      FROM ai_config WHERE organization_id = ?`
   )
     .bind(env.ORGANIZATION_ID)
@@ -34,7 +44,22 @@ export async function getAiConfig(
 
   if (row) return row;
 
+  console.warn(
+    `[${env.ORGANIZATION_ID}] No ai_config row found — using generic defaults. Configure via Admin panel.`
+  );
+
   return { organization_id: env.ORGANIZATION_ID, ...DEFAULT_CONFIG };
+}
+
+export function intakeContextLabelFromConfig(
+  config: Pick<AiConfigRow, "intake_context_label">
+): string {
+  return config.intake_context_label?.trim() || DEFAULT_INTAKE_CONTEXT_LABEL;
+}
+
+export async function getSafeFallbackMessage(env: Env): Promise<string> {
+  const config = await getAiConfig(env);
+  return config.safe_fallback_message?.trim() || DEFAULT_SAFE_FALLBACK_MESSAGE;
 }
 
 export async function getLocationOverride(

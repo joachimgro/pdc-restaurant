@@ -150,6 +150,3 @@ export function stubReplyFromLead(
     statusLabel: stage === "Booking" ? "Booked" : "Engaged",
   };
 }
-
-export const SMS_SAFE_FALLBACK =
-  "Thanks for texting — I'll get a coach to follow up with you shortly. Anything specific you'd like to know about classes?";

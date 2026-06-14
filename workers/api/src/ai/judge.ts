@@ -1,9 +1,8 @@
 import type { Reasoning } from "@lead-intake/shared-types";
 import type { KnowledgeChunk } from "@lead-intake/knowledge";
 import type { Env } from "../env";
-import type { AiConfigRow } from "../db/ai-config";
+import { getSafeFallbackMessage, type AiConfigRow } from "../db/ai-config";
 import { parseJudgeOutput } from "./parse-output";
-import { SMS_SAFE_FALLBACK } from "./stub";
 import {
   buildJudgeSystemPrompt,
   buildJudgeUserPrompt,
@@ -68,9 +67,10 @@ export async function judgeReply(
       reason: rulesCheck.reason,
       replyPreview: proposedReply.slice(0, 120),
     });
+    const fallback = await getSafeFallbackMessage(env);
     return {
-      text: SMS_SAFE_FALLBACK,
-      smsText: SMS_SAFE_FALLBACK,
+      text: fallback,
+      smsText: fallback,
       skipSms: false,
       reasoning: {
         verdict: "Hold",
@@ -155,9 +155,10 @@ export async function judgeReply(
 
     const recheck = ruleBasedChecks(final, knowledgeChunks);
     if (recheck.hold) {
+      const fallback = await getSafeFallbackMessage(env);
       return {
-        text: SMS_SAFE_FALLBACK,
-        smsText: SMS_SAFE_FALLBACK,
+        text: fallback,
+        smsText: fallback,
         skipSms: false,
         reasoning: {
           verdict: "Hold",

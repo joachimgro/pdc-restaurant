@@ -1,23 +1,13 @@
 import type { Lead } from "@lead-intake/shared-types";
 
-/**
- * LOCATIONS — used by seedDatabase() to populate the locations table.
- *
- * Replace with the client's actual locations.
- * Each entry needs: id (slug), name (display), abbrev (1–2 chars for badge), badge (unread count or null).
- *
- * Example:
- *   { id: "london-hq", name: "London HQ", abbrev: "L", badge: null }
- */
+// Client locations are managed via the Admin panel and stored in D1.
+// Do not add locations here — they will cause merge conflicts on base updates.
 export const LOCATIONS: readonly {
   id: string;
   name: string;
   abbrev: string;
   badge: number | null;
-}[] = [
-  // TODO: replace with client locations
-  // { id: "main", name: "Main Gym", abbrev: "M", badge: null },
-];
+}[] = [];
 
 /**
  * LEAD_GROUPS — controls display ordering of seeded demo leads in the inbox.
@@ -39,9 +29,6 @@ export const LEAD_GROUPS: {
 /**
  * Build seeded demo leads. Empty by default — only used when
  * ENABLE_DEMO_TOOLS=true and /admin/seed is called.
- *
- * To add demo leads for a sales demo, return a Record<string, Lead> here
- * with ids matching LEAD_GROUPS above.
  */
 export function buildSeedLeads(): Record<string, Lead> {
   return {};
@@ -49,8 +36,7 @@ export function buildSeedLeads(): Record<string, Lead> {
 
 /**
  * OLIVIA_SIMULATE — payload for the "simulate a new lead" demo tool
- * (POST /leads/simulate, gated by ENABLE_DEMO_TOOLS). Generic placeholder;
- * customise for live sales demos if desired.
+ * (POST /leads/simulate, gated by ENABLE_DEMO_TOOLS).
  */
 export const OLIVIA_SIMULATE = {
   name: "Demo Lead",

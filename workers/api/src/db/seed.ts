@@ -6,6 +6,7 @@ import {
 import type { Lead, Message } from "@lead-intake/shared-types";
 import type { Env } from "../env";
 import { countLeads } from "./leads";
+import { countOrgLocations } from "./locations";
 
 // TODO: set the org display name (used in DB only; AI-facing name comes from ai_config)
 const ORG_NAME = "TODO: Client Name";
@@ -138,18 +139,29 @@ export async function seedDatabase(env: Env): Promise<{ seeded: boolean; count: 
     .bind(env.ORGANIZATION_ID, ORG_NAME)
     .run();
 
-  for (const loc of LOCATIONS) {
-    await env.DB.prepare(
-      `INSERT INTO locations (id, organization_id, name, abbrev, badge_count) VALUES (?, ?, ?, ?, ?)`
-    )
-      .bind(
-        loc.id,
-        env.ORGANIZATION_ID,
-        loc.name,
-        loc.abbrev,
-        loc.badge ?? null
+  const existingLocations = await countOrgLocations(env);
+  if (existingLocations > 0) {
+    console.warn(
+      `Locations already configured for org ${env.ORGANIZATION_ID} (${existingLocations}) — skipping bundled location seed.`
+    );
+  } else if (LOCATIONS.length > 0) {
+    for (const loc of LOCATIONS) {
+      await env.DB.prepare(
+        `INSERT INTO locations (id, organization_id, name, abbrev, badge_count) VALUES (?, ?, ?, ?, ?)`
       )
-      .run();
+        .bind(
+          loc.id,
+          env.ORGANIZATION_ID,
+          loc.name,
+          loc.abbrev,
+          loc.badge ?? null
+        )
+        .run();
+    }
+  } else {
+    console.warn(
+      `No locations configured for org ${env.ORGANIZATION_ID}. Add locations via Admin panel before going live.`
+    );
   }
 
   const leads = buildSeedLeads();

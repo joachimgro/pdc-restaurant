@@ -28,23 +28,6 @@ export function displayFirstName(name: string): string {
   return first.charAt(0).toUpperCase() + first.slice(1).toLowerCase();
 }
 
-const BRANCH_CITIES = ["manchester", "leeds", "bolton", "stockport"] as const;
-
-const SCHEDULE_FALLBACK: Record<string, { match: RegExp; line: string }[]> = {
-  manchester: [
-    { match: /kids.*bjj|bjj.*kids/i, line: "on Monday and Wednesday, 5:00–6:00pm" },
-    { match: /adult.*bjj|bjj/i, line: "on Tuesday and Thursday, 7:00–8:30pm" },
-  ],
-  leeds: [
-    { match: /kids.*bjj|bjj.*kids/i, line: "on Monday and Wednesday, 4:30–5:30pm" },
-    { match: /muay thai/i, line: "on Saturday mornings, 10:00–11:30am" },
-  ],
-  stockport: [
-    { match: /kids.*bjj|bjj.*kids/i, line: "on Wednesday and Friday, 5:00–6:00pm" },
-    { match: /kickboxing/i, line: "on Monday evenings, 7:00–8:00pm" },
-  ],
-};
-
 function interestKeywords(interest: string): string[] {
   const i = interest.toLowerCase();
   const keys: string[] = [];
@@ -57,10 +40,12 @@ function interestKeywords(interest: string): string[] {
   return keys;
 }
 
-function chunkMentionsOtherBranch(text: string, locationId: string): boolean {
-  const lower = text.toLowerCase();
-  return BRANCH_CITIES.some(
-    (city) => city !== locationId && lower.includes(city)
+function chunkMentionsOtherBranch(
+  chunkLocationId: string | null | undefined,
+  leadLocationId: string
+): boolean {
+  return Boolean(
+    chunkLocationId && leadLocationId && chunkLocationId !== leadLocationId
   );
 }
 
@@ -70,7 +55,7 @@ function scoreScheduleChunk(chunk: RetrievedChunk, lead: Lead): number {
   const loc = lead.locationId ?? "";
   if (chunk.locationId === loc) score += 20;
   else if (chunk.locationId) score -= 30;
-  if (chunkMentionsOtherBranch(text, loc)) score -= 50;
+  if (chunkMentionsOtherBranch(chunk.locationId, loc)) score -= 50;
   for (const kw of interestKeywords(lead.interest)) {
     if (text.includes(kw)) score += 8;
   }
@@ -96,7 +81,7 @@ export function pickScheduleLine(
   }
 
   const ranked = [...chunks]
-    .filter((c) => !chunkMentionsOtherBranch(c.text, lead.locationId ?? ""))
+    .filter((c) => !chunkMentionsOtherBranch(c.locationId, lead.locationId ?? ""))
     .sort((a, b) => scoreScheduleChunk(b, lead) - scoreScheduleChunk(a, lead));
 
   const best = ranked.find(
@@ -107,12 +92,6 @@ export function pickScheduleLine(
       )
   );
   if (best) return extractSchedulePhrase(best.text);
-
-  const loc = lead.locationId ?? "";
-  const rules = SCHEDULE_FALLBACK[loc] ?? [];
-  for (const rule of rules) {
-    if (rule.match.test(lead.interest)) return rule.line;
-  }
 
   return "through the week — we'll confirm exact times when you book your trial";
 }

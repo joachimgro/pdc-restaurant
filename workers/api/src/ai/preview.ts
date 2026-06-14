@@ -8,6 +8,7 @@ import {
 import { buildCurrentTurnPrompt, buildSystemPrompt } from "./prompt";
 import type { ConversationContext } from "./context";
 import { buildStructuredHistoryForLlm } from "./context";
+import { intakeContextLabelFromConfig } from "../db/ai-config";
 import { buildLeadIntakeContextBlock, pickScheduleLine } from "./intake-context";
 import type { Lead } from "@lead-intake/shared-types";
 import { parseGenerateOutput } from "./parse-output";
@@ -104,7 +105,8 @@ export async function previewKnowledge(
 
       const structuredHistory = buildStructuredHistoryForLlm(
         ctx.history,
-        input.query
+        input.query,
+        intakeContextLabelFromConfig(ctx.aiConfig)
       );
       const raw = await runChatModel(
         env,

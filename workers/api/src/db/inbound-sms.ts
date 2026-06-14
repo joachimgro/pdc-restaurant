@@ -6,6 +6,7 @@ import {
   nowTimeLabel,
   updateLeadFields,
 } from "./leads";
+import { getDefaultLocation } from "./locations";
 import type { Env } from "../env";
 import { canonicalPhone, phoneDigitSuffix } from "./phone-utils";
 
@@ -33,8 +34,21 @@ export async function processInboundSms(
   const phone = canonicalPhone(input.phone);
   const text = input.text.trim();
   const source = input.source ?? "SMS";
-  const locationId = input.locationId ?? "manchester";
-  const locationConfirmed = !!input.locationId; // false when falling back to default
+
+  let locationId: string | null = input.locationId ?? null;
+  let locationConfirmed = !!input.locationId;
+
+  if (!locationId) {
+    const defaultLocation = await getDefaultLocation(env);
+    if (defaultLocation) {
+      locationId = defaultLocation.id;
+      locationConfirmed = false;
+    } else {
+      console.warn(
+        `Inbound SMS from ${phone} — no locations configured for org ${env.ORGANIZATION_ID}. Lead created without location.`
+      );
+    }
+  }
 
   if (!phone || !text) {
     return {

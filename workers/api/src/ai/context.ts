@@ -25,7 +25,8 @@ export interface StructuredTurn {
 }
 
 export function buildStructuredHistory(
-  history: { role: string; text: string }[]
+  history: { role: string; text: string }[],
+  intakeContextLabel = "(Lead initiated contact via website form)"
 ): StructuredTurn[] {
   const turns: StructuredTurn[] = [];
 
@@ -55,7 +56,7 @@ export function buildStructuredHistory(
   if (merged.length > 0 && merged[0].role === "assistant") {
     merged.unshift({
       role: "user",
-      content: "(Lead initiated contact via website form)",
+      content: intakeContextLabel,
     });
   }
 
@@ -65,7 +66,8 @@ export function buildStructuredHistory(
 /** History for LLM — omit the latest lead line when it is the same as inbound (already in current-turn prompt). */
 export function buildStructuredHistoryForLlm(
   history: { role: string; text: string }[],
-  inboundText: string
+  inboundText: string,
+  intakeContextLabel?: string
 ): StructuredTurn[] {
   const trimmed = inboundText.trim();
   let slice = history;
@@ -75,7 +77,7 @@ export function buildStructuredHistoryForLlm(
       slice = history.slice(0, -1);
     }
   }
-  return buildStructuredHistory(slice);
+  return buildStructuredHistory(slice, intakeContextLabel);
 }
 
 export async function buildConversationContext(

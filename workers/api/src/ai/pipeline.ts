@@ -6,6 +6,7 @@ import {
   buildConversationContext,
   buildStructuredHistoryForLlm,
 } from "./context";
+import { intakeContextLabelFromConfig } from "../db/ai-config";
 import {
   isFirstWelcomeTurn,
   isWebsiteIntakePrompt,
@@ -265,7 +266,8 @@ export async function generateAiReply(
   try {
     const structuredHistory = buildStructuredHistoryForLlm(
       ctx.history,
-      inboundText
+      inboundText,
+      intakeContextLabelFromConfig(ctx.aiConfig)
     );
     const messages: ChatMessage[] = [
       {

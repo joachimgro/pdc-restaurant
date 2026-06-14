@@ -1,6 +1,7 @@
 import type { Lead } from "@lead-intake/shared-types";
 import type { Env } from "../env";
 import { insertDomainEvent } from "../db/events";
+import { getLocationNameById, resolveLocationIdFromText } from "../db/locations";
 import { nowTimeLabel, updateLeadFields } from "../db/leads";
 import {
   extractProgrammeFromText,
@@ -52,33 +53,6 @@ const PROGRAMME_ALIASES: Record<string, string> = {
   judo: "Judo",
   taekwondo: "Taekwondo",
 };
-
-// ─── Location matching ────────────────────────────────────────────────────────
-
-const LOCATION_ALIASES: Record<string, string> = {
-  manchester: "manchester",
-  mcr: "manchester",
-  "man city": "manchester",
-  leeds: "leeds",
-  bolton: "bolton",
-  stockport: "stockport",
-  "stock port": "stockport",
-};
-
-const LOCATION_NAMES: Record<string, string> = {
-  manchester: "Manchester",
-  leeds: "Leeds",
-  bolton: "Bolton",
-  stockport: "Stockport",
-};
-
-function extractLocationId(text: string): string | undefined {
-  const lower = text.toLowerCase();
-  for (const [keyword, locationId] of Object.entries(LOCATION_ALIASES)) {
-    if (lower.includes(keyword)) return locationId;
-  }
-  return undefined;
-}
 
 // ─── Name validation ──────────────────────────────────────────────────────────
 
@@ -244,7 +218,6 @@ export function parseQualificationReply(text: string): QualificationData {
   return {
     name: extractName(text),
     interest: extractInterest(text),
-    locationId: extractLocationId(text),
     ...extractChild(text),
   };
 }
@@ -274,7 +247,7 @@ export async function applyQualificationUpdate(
     sets.push("location_id = ?");
     binds.push(data.locationId);
     sets.push("location_confirmed = 1");
-    const locName = LOCATION_NAMES[data.locationId] ?? data.locationId;
+    const locName = await getLocationNameById(env, data.locationId);
     timelineParts.push({ bold: "Location confirmed", text: ` · ${locName}` });
   }
   if (data.isChild && (data.childName || data.childAge)) {
@@ -568,22 +541,25 @@ export async function handleQualificationTurn(
 
   // Always parse — even message 1 might contain name/interest/location
   const parsed = parseQualificationReply(inboundText);
+  const parsedLocationId = await resolveLocationIdFromText(env, inboundText);
 
   // Only update with confirmed location if it changed from the unconfirmed default
-  const locationChanged = parsed.locationId && parsed.locationId !== lead.locationId;
+  const locationChanged =
+    parsedLocationId && parsedLocationId !== lead.locationId;
   if (parsed.name || parsed.interest || locationChanged || parsed.isChild) {
     await applyQualificationUpdate(env, lead.id, {
       ...parsed,
-      // Don't re-write the locationId if it hasn't changed
-      locationId: locationChanged ? parsed.locationId : undefined,
+      locationId: locationChanged ? parsedLocationId : undefined,
     });
   }
 
   const name = parsed.name ?? existing;
   const interest = parsed.interest ?? (lead.interest !== "Unknown" ? lead.interest : undefined);
-  const locationConfirmed = lead.locationConfirmed !== false || !!parsed.locationId;
-  const locationId = parsed.locationId ?? lead.locationId;
-  const locationName = LOCATION_NAMES[locationId ?? ""] ?? lead.location;
+  const locationConfirmed = lead.locationConfirmed !== false || !!parsedLocationId;
+  const locationId = parsedLocationId ?? lead.locationId;
+  const locationName = locationId
+    ? await getLocationNameById(env, locationId)
+    : lead.location;
 
   const gotEnough = !!(name && interest && locationConfirmed);
 

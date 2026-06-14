@@ -1,8 +1,12 @@
 # Knowledge Chunk Writing Guide
 
-The AI uses knowledge chunks — short text snippets stored in Cloudflare Vectorize — to answer
-leads' questions accurately. Each time a lead sends a message, the AI retrieves the most
-relevant chunks and uses them to compose a reply.
+The AI uses knowledge chunks — short text snippets stored in D1 and indexed in Cloudflare
+Vectorize — to answer leads' questions accurately. Each time a lead sends a message, the AI
+retrieves the most relevant chunks and uses them to compose a reply.
+
+**Manage chunks in the Admin panel → Knowledge tab.** Do not edit `packages/knowledge/src/index.ts`
+— that file is empty in the base template and exists only for backward compatibility during
+migration. Client-specific knowledge belongs in D1 only.
 
 ---
 
@@ -32,18 +36,15 @@ Every client deployment should have chunks covering at least:
 
 ---
 
-## Chunk Template
+## Adding Chunks via Admin
 
-```ts
-{
-  id: "unique-kebab-case-id",         // e.g. "faq-pricing", "london-schedule"
-  organizationId: "your-org-id",      // must match ORGANIZATION_ID in wrangler.toml
-  locationId: null,                   // or "location-slug" for location-specific chunks
-  title: "Short descriptive title",   // used in admin UI, not sent to AI
-  source: "faq.md",                   // reference label (no need for the file to exist)
-  text: "The full chunk text goes here. Write it as if explaining to the AI what to say.",
-},
-```
+1. Open the inbox app and go to **Admin → Knowledge**.
+2. Click **Add chunk** and fill in:
+   - **Title** — short label for your team (not sent to the AI verbatim).
+   - **Text** — the knowledge the AI should use (see examples below).
+   - **Location** — leave as global, or scope to a specific location slug.
+3. New portal chunks are embedded into Vectorize automatically when AI bindings are configured.
+4. Use **Re-ingest Knowledge** after bulk edits or schedule sync changes.
 
 ---
 
@@ -51,42 +52,34 @@ Every client deployment should have chunks covering at least:
 
 Always include a style chunk. This controls how the AI sounds.
 
-```ts
-{
-  id: "conv-style",
-  organizationId: "your-org-id",
-  locationId: null,
-  title: "Conversation style",
-  source: "playbook.md",
-  text: "Write like a coach texting from the desk — warm, friendly, human. Use contractions " +
-        "and short sentences. Good openers: 'Hey!', 'Hi [name] —', 'No worries at all'. " +
-        "Avoid corporate language: 'Thank you for your enquiry', 'We would be delighted'. " +
-        "Never mention AI or automated systems.",
-},
-```
+**Title:** Conversation style
+
+**Text example:**
+
+> Write like a friendly team member texting from the desk — warm, human, concise. Use
+> contractions and short sentences. Good openers: "Hey!", "Hi [name] —", "No worries at all".
+> Avoid corporate language: "Thank you for your enquiry", "We would be delighted". Never
+> mention AI or automated systems.
 
 ---
 
 ## Location Chunk Example
 
-```ts
-{
-  id: "loc-london-hq",
-  organizationId: "your-org-id",
-  locationId: "london-hq",
-  title: "London HQ — schedule and details",
-  source: "locations/london-hq.md",
-  text: "London HQ is at 12 Example Street, E1 6RF. Adults BJJ: Monday and Wednesday 7pm. " +
-        "Kids BJJ (ages 5–14): Tuesday and Thursday 5pm. Free parking behind the building. " +
-        "Trial classes run every week — book via text by giving preferred day and time slot.",
-},
-```
+**Title:** London HQ — schedule and details
+
+**Location:** `london-hq` (must match a location slug in Admin → Locations)
+
+**Text example:**
+
+> London HQ is at 12 Example Street, E1 6RF. Adults classes: Monday and Wednesday 7pm. Kids
+> classes (ages 5–14): Tuesday and Thursday 5pm. Free parking behind the building. Trial
+> classes run every week — book via text by giving preferred day and time slot.
 
 ---
 
-## After Editing Chunks
+## Re-ingest After Changes
 
-Run the ingest command to push chunks into Vectorize:
+Portal chunks are upserted on create. For a full rebuild (e.g. after deleting many chunks):
 
 ```bash
 curl -X POST https://pdc-{client-slug}.workers.dev/admin/ingest-knowledge \
@@ -94,11 +87,14 @@ curl -X POST https://pdc-{client-slug}.workers.dev/admin/ingest-knowledge \
   -d '{"confirm":"INGEST KNOWLEDGE"}'
 ```
 
-Or use the Admin panel → **Re-ingest Knowledge**.
+Or use **Admin → Knowledge → Re-ingest Knowledge**.
+
+The ingest pipeline reads D1 `knowledge_chunks` first (portal + schedule sources), then any
+remaining bundled chunks from `@lead-intake/knowledge` (empty in the base template).
 
 ---
 
 ## Checking What's Ingested
 
-Use the Admin panel → **Knowledge** tab to see all stored chunks and test retrieval
-with the Preview tool (shows which chunks a given query would retrieve).
+Use **Admin → Knowledge** to see all stored chunks and test retrieval with the Preview tool
+(shows which chunks a given query would retrieve).

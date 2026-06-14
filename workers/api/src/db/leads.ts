@@ -21,7 +21,7 @@ export function nowTimeLabel(): string {
 
 type LeadRow = {
   id: string;
-  location_id: string;
+  location_id: string | null;
   name: string;
   phone: string;
   time_label: string;
@@ -96,8 +96,9 @@ function rowToMessage(r: MessageRow): Message {
 
 async function getLocationName(
   db: D1Database,
-  locationId: string
+  locationId: string | null
 ): Promise<string> {
+  if (!locationId) return "Unassigned";
   const row = await db
     .prepare("SELECT name FROM locations WHERE id = ?")
     .bind(locationId)
@@ -146,7 +147,7 @@ async function rowToLead(db: D1Database, row: LeadRow): Promise<Lead> {
     phone: row.phone,
     time: row.time_label,
     location,
-    locationId: row.location_id,
+    locationId: row.location_id ?? undefined,
     status: row.status as Lead["status"],
     statusLabel: row.status_label,
     assessment: row.assessment,
@@ -220,7 +221,7 @@ export async function listLeadsSummaries(env: Env): Promise<{
 }> {
   const { results } = await env.DB.prepare(
     `SELECT l.*, loc.name as location_name FROM leads l
-     JOIN locations loc ON loc.id = l.location_id
+     LEFT JOIN locations loc ON loc.id = l.location_id
      WHERE l.organization_id = ?
      ORDER BY l.list_group, l.sort_order`
   )
@@ -237,7 +238,7 @@ export async function listLeadsSummaries(env: Env): Promise<{
   for (const row of results ?? []) {
     const key = mapGroup(row.list_group);
     groups[key].push(row.id);
-    leads[row.id] = rowToSummary(row, row.location_name);
+    leads[row.id] = rowToSummary(row, row.location_name ?? "Unassigned");
   }
 
   return { activeCount: (results ?? []).length, groups, leads };

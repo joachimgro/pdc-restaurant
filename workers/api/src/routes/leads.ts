@@ -164,7 +164,7 @@ export async function handleSimulateNewLead(
       id,
       now,
       JSON.stringify([
-        { bold: "New lead", text: " · Referral SMS" },
+        { bold: "New lead", text: " · Simulated lead" },
       ])
     )
     .run();
