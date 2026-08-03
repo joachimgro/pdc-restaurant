@@ -79,7 +79,11 @@ export default {
 
       if (!isPublic) {
         const session = await getStaffSession(env, request);
-        if (!session && !adminSecretAuthorized(request, env)) {
+        // X-Admin-Secret is an operator-script bypass, valid ONLY for /admin/*.
+        // All other routes require a real staff session.
+        const adminBypass =
+          path.startsWith("/admin/") && adminSecretAuthorized(request, env);
+        if (!session && !adminBypass) {
           return jsonResponse(request, env, { error: "Unauthorized" }, 401);
         }
       }
