@@ -21,7 +21,14 @@ export function corsHeaders(
 ): Headers {
   const h = new Headers(extra);
   h.set("Access-Control-Allow-Origin", resolveCorsOrigin(request, env));
-  h.set("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS");
+  // PUT is required by the whole-payload service routes (floor plan, settings,
+  // table assignment). It was missing until a browser client existed to send
+  // one: the preflight still returns 204, so the failure surfaces only as the
+  // real request being blocked.
+  h.set(
+    "Access-Control-Allow-Methods",
+    "GET, POST, PUT, PATCH, DELETE, OPTIONS"
+  );
   h.set(
     "Access-Control-Allow-Headers",
     "Content-Type, Authorization, Last-Event-ID"

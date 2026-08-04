@@ -9,3 +9,6 @@ dist
 .env
 .env*.local
 *.tsbuildinfo
+
+# Local dev wrangler config (LAN + local D1). Never committed.
+workers/api/wrangler.dev.toml
