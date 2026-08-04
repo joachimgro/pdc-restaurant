@@ -2418,3 +2418,38 @@ button.rail-icon.active,
   background-clip: padding-box;
 }
 ::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.16); background-clip: padding-box; }
+
+/* ════════════════════════════════════════════════════════════════════════
+   Service module — spec §15. Extends the set above, replaces nothing.
+   --svc-over (amber) is the only genuinely new hue.
+   ════════════════════════════════════════════════════════════════════════ */
+
+:root {
+  /* service state */
+  --svc-free:      var(--panel-2);
+  --svc-free-line: var(--border-strong);
+  --svc-upcoming:  rgba(255, 107, 107, 0.18);
+  --svc-due:       var(--accent);
+  --svc-seated:    var(--green);
+  --svc-seated-bg: var(--green-soft);
+  --svc-over:      #F0B429;
+  --svc-over-bg:   rgba(240, 180, 41, 0.16);
+  --svc-late:      #FF6B6B;
+  --svc-blocked:   rgba(130, 133, 142, 0.25);
+
+  /* floor plan */
+  --floor-bg:      #121317;
+  --floor-grid:    rgba(255, 255, 255, 0.035);
+  --floor-label:   var(--text-mid);
+  --floor-select:  #7DD3FC;
+
+  /* pacing ribbon */
+  --pace-fill:     rgba(255, 107, 107, 0.55);
+  --pace-cap:      var(--border-strong);
+  --pace-over:     #F0B429;
+
+  /* data type */
+  --font-numeric: 'Plus Jakarta Sans', ui-monospace, monospace;
+  --fs-metric:    34px;
+  --fs-metric-sm: 22px;
+}

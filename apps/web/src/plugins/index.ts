@@ -13,3 +13,4 @@
 
 // No plugins installed on main branch.
 // Feature branches add plugin imports here.
+import "./service";
