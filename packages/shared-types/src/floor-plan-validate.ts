@@ -1,4 +1,4 @@
-import { TABLE_SHAPES, type FloorPlan } from "@lead-intake/shared-types";
+import { TABLE_SHAPES, type FloorPlan } from "./service";
 
 /**
  * Semantic validation for a whole floor plan payload. Pure — no DB access —

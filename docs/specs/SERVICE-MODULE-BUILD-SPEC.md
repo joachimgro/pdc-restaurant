@@ -1583,6 +1583,7 @@ Recorded so a future session does not silently reverse them.
 - No CI. The 13-file suite grows to ~40 here and still runs only when someone types `pnpm test`. Add a GitHub Action running `pnpm test` and `pnpm build` on PR — half a day, and it protects everything above.
 - No staging environment. Migrations go from local to production. With money and guest data now in scope, a staging Worker and D1 is no longer optional.
 - No error tracking. `/health` and JSON logs are not enough once a real venue is live during service. Add Workers Observability or Sentry before Phase 9.
+- Floor plan saves are last-write-wins. `PUT /service/floor-plan` submits the whole plan and has no concurrency check, so two managers editing layouts at once will silently overwrite each other — the second save wins entirely, and the first manager sees no indication their work was discarded. Closing it needs a version column on `rooms`, returned by `GET /service/floor-plan` and checked against `If-Match` on `PUT`, rejecting stale saves with `409`. Low priority: it takes two managers editing layouts simultaneously, which is rare outside initial setup. Revisit if a multi-manager venue reports a layout reverting.
 
 ---
 

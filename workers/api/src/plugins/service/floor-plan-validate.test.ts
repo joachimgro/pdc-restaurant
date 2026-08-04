@@ -1,6 +1,10 @@
-import type { DiningTable, FloorPlan, Room } from "@lead-intake/shared-types";
+import {
+  validateFloorPlan,
+  type DiningTable,
+  type FloorPlan,
+  type Room,
+} from "@lead-intake/shared-types";
 import { describe, expect, it } from "vitest";
-import { validateFloorPlan } from "./floor-plan-validate";
 
 function table(overrides: Partial<DiningTable> = {}): DiningTable {
   return {

@@ -1,14 +1,12 @@
-import type {
-  DiningTable,
-  FloorPlan,
-  Room,
-  TableCombination,
-} from "@lead-intake/shared-types";
-import type { Env } from "../../../env";
 import {
   validateFloorPlan,
+  type DiningTable,
+  type FloorPlan,
   type FloorPlanIssue,
-} from "../floor-plan-validate";
+  type Room,
+  type TableCombination,
+} from "@lead-intake/shared-types";
+import type { Env } from "../../../env";
 import { listRooms } from "./rooms";
 import {
   toBool,
