@@ -4,7 +4,7 @@
 **Baseline:** `ARCHITECTURE-AUDIT.md`, schema version `0033`
 **Target schema version on completion:** `0040`
 **Author of record:** architecture agreed with Joachim Grochowski, Phiof Digital
-**Status:** implementation-ready
+**Status:** Phase 2 gate passed — Phase 3 next
 
 ---
 
@@ -1530,6 +1530,7 @@ Migrations 0034–0035. `plugins/service/` with venue settings, rooms, tables, c
 ### Phase 2 — Floor plan editor
 Web plugin registered, layout mode, drag/resize/rotate, combinations UI, room tabs, save.
 **Gate:** a 28-table room built from scratch on an iPad in under 10 minutes.
+**Gate status:** passed (2026-08-05) — Joachim signed off after iPad check; proceed to Phase 3.
 
 ### Phase 3 — Availability and assignment
 Migration 0036. Pure engines, fully unit tested, before any UI. `GET /service/availability`, `POST /service/reservations`, status transitions, hold mechanics with the conditional insert.
