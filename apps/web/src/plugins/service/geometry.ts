@@ -11,6 +11,9 @@ export const NUDGE_LARGE = FLOOR_GRID_UNITS * 10;
 export const MIN_ZOOM = 0.25;
 export const MAX_ZOOM = 4;
 
+/** Stable default — never allocate inline inside a Zustand selector. */
+export const DEFAULT_VIEWPORT = { zoom: 1, panX: 0, panY: 0 } as const;
+
 /**
  * Defaults per shape, in canvas units, matched to the seeded demo venue so a
  * hand-built room lands on the same proportions as the seed.

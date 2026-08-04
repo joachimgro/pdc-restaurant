@@ -6,6 +6,7 @@
   flex-direction: column;
   height: 100%;
   min-height: 0;
+  overflow: hidden;
   background: var(--panel);
   color: var(--text-hi);
 }
@@ -173,13 +174,19 @@
   min-width: 0;
   min-height: 0;
   display: flex;
+  flex: 1;
   padding: 16px;
   background: var(--floor-bg);
+  position: relative;
 }
 
 .fp-canvas {
+  flex: 1;
   width: 100%;
   height: 100%;
+  min-width: 0;
+  min-height: 0;
+  display: block;
   /* The editor owns every gesture on the plan; the browser must not pan or
      zoom the page out from under a drag. */
   touch-action: none;

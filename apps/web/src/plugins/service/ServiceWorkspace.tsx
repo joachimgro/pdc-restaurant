@@ -16,7 +16,7 @@ import {
   IconZoomIn,
   IconZoomOut,
 } from "./icons";
-import { MAX_ZOOM, MIN_ZOOM, NUDGE_LARGE, NUDGE_SMALL, clamp } from "./geometry";
+import { MAX_ZOOM, MIN_ZOOM, NUDGE_LARGE, NUDGE_SMALL, DEFAULT_VIEWPORT, clamp } from "./geometry";
 import { ShapePalette } from "./ShapePalette";
 import { TableInspector } from "./TableInspector";
 import { ValidationPanel } from "./ValidationPanel";
@@ -25,6 +25,7 @@ import {
   selectVisibleRooms,
   useFloorEditor,
 } from "./store/floor-editor-store";
+import { useShallow } from "zustand/react/shallow";
 import "./service.css";
 
 const ALIGN_MODES = [
@@ -36,6 +37,11 @@ const ALIGN_MODES = [
   { mode: "bottom", label: "Align bottom" },
 ] as const;
 
+const WORKSPACE_SHELL = {
+  className: "fp-root leads workspace-panel",
+  style: { gridColumn: "2 / -1" } as const,
+};
+
 export function ServiceWorkspace() {
   const status = useFloorEditor((s) => s.status);
   const loadError = useFloorEditor((s) => s.loadError);
@@ -46,26 +52,36 @@ export function ServiceWorkspace() {
   }, [load]);
 
   if (status === "loading" || status === "idle") {
-    return <div className="fp-loading">Loading the floor plan</div>;
-  }
-
-  if (status === "error") {
     return (
-      <div className="fp-loading fp-loading-error">
-        <p>{loadError}</p>
-        <button type="button" className="fp-btn" onClick={() => void load()}>
-          Try again
-        </button>
+      <div {...WORKSPACE_SHELL}>
+        <div className="fp-loading">Loading the floor plan</div>
       </div>
     );
   }
 
-  return <FloorPlanEditor />;
+  if (status === "error") {
+    return (
+      <div {...WORKSPACE_SHELL}>
+        <div className="fp-loading fp-loading-error">
+          <p>{loadError}</p>
+          <button type="button" className="fp-btn" onClick={() => void load()}>
+            Try again
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div {...WORKSPACE_SHELL}>
+      <FloorPlanEditor />
+    </div>
+  );
 }
 
 function FloorPlanEditor() {
   const doc = useFloorEditor((s) => s.doc);
-  const rooms = useFloorEditor(selectVisibleRooms);
+  const rooms = useFloorEditor(useShallow(selectVisibleRooms));
   const activeRoomId = useFloorEditor((s) => s.activeRoomId);
   const selection = useFloorEditor((s) => s.selection);
   const dirty = useFloorEditor(selectIsDirty);
@@ -75,7 +91,7 @@ function FloorPlanEditor() {
   const past = useFloorEditor((s) => s.past);
   const future = useFloorEditor((s) => s.future);
   const viewport = useFloorEditor((s) =>
-    activeRoomId ? (s.viewports[activeRoomId] ?? { zoom: 1, panX: 0, panY: 0 }) : null
+    activeRoomId ? (s.viewports[activeRoomId] ?? DEFAULT_VIEWPORT) : null
   );
 
   const store = useFloorEditor;

@@ -9,6 +9,7 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import {
+  DEFAULT_VIEWPORT,
   MAX_ZOOM,
   MIN_ZOOM,
   clamp,
@@ -98,8 +99,10 @@ export function FloorCanvas({
 
   const doc = useFloorEditor((s) => s.doc);
   const selection = useFloorEditor((s) => s.selection);
+  // Must return a stable reference — a fresh fallback object every call
+  // trips useSyncExternalStore into an infinite loop (Zustand v5).
   const viewport = useFloorEditor(
-    (s) => s.viewports[room.id] ?? { zoom: 1, panX: 0, panY: 0 }
+    (s) => s.viewports[room.id] ?? DEFAULT_VIEWPORT
   );
   const setViewport = useFloorEditor((s) => s.setViewport);
   const setSelection = useFloorEditor((s) => s.setSelection);

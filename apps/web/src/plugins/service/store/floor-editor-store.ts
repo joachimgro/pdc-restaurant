@@ -160,6 +160,10 @@ export const useFloorEditor = create<FloorEditorState>((set, get) => ({
         doc.roomOrder.find((id) => doc.rooms[id]?.isActive) ??
         doc.roomOrder[0] ??
         null;
+      const viewports: Record<string, Viewport> = {};
+      for (const id of doc.roomOrder) {
+        viewports[id] = { zoom: 1, panX: 0, panY: 0 };
+      }
       set({
         status: "ready",
         doc,
@@ -168,6 +172,7 @@ export const useFloorEditor = create<FloorEditorState>((set, get) => ({
         future: [],
         activeRoomId: firstActive,
         selection: [],
+        viewports,
         issues: [],
       });
     } catch (err) {
