@@ -11,6 +11,18 @@ export interface Env {
   ENABLE_SIMPLE_SCHEDULING?: string;
   /** Set to "true" to enable multi-venue + location in qualification */
   ENABLE_MULTI_LOCATION?: string;
+  /** Set to "true" to enable the service module (/service/* routes + nav) */
+  ENABLE_SERVICE?: string;
+  /** Set to "true" to enable the booking flow and reservation routes */
+  ENABLE_RESERVATIONS?: string;
+  /** Set to "true" to enable waitlist UI and routes */
+  ENABLE_WAITLIST?: string;
+  /** Set to "true" to enable Stripe deposit/card-on-file paths */
+  ENABLE_DEPOSITS?: string;
+  /** Set to "true" to enable floor plan views (off = list/timeline only) */
+  ENABLE_FLOOR_PLAN?: string;
+  /** Set to "true" to auto-assign tables (off = bookings land unassigned) */
+  ENABLE_AUTO_ASSIGN?: string;
   /** Set to "true" to use template stub instead of Workers AI */
   AI_DISABLED?: string;
   AI_EMBED_MODEL?: string;
