@@ -227,3 +227,11 @@ export function canInviteRole(
 export function canAssignAdmins(role: StaffRole): boolean {
   return role === "superadmin";
 }
+
+/**
+ * Editing the floor plan, service periods, or deposit policies. Members run
+ * service; they do not reshape the venue mid-shift.
+ */
+export function canManageVenue(role: StaffRole): boolean {
+  return role === "superadmin" || role === "admin";
+}

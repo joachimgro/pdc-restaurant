@@ -28,6 +28,8 @@ export default defineConfig(async () => {
           bindings: {
             ORGANIZATION_ID: "test",
             CORS_ORIGIN: "http://localhost:3000",
+            ENABLE_SERVICE: "true",
+            ADMIN_SEED_SECRET: "test-secret",
             TEST_MIGRATIONS: migrations,
           },
         },

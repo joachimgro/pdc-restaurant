@@ -1,19 +1,15 @@
-import type { Env } from "../src/env";
+// Ambient declarations — no top-level import, or these stop being global.
+// `env` from "cloudflare:test" is typed as Cloudflare.Env, which this file
+// populates with the bindings vitest.config.ts actually provides.
 
 declare namespace Cloudflare {
-  // Bindings provided by vitest.config.ts for `env` from "cloudflare:workers".
   interface Env {
     DB: D1Database;
     RATE_LIMITS: KVNamespace;
     ORGANIZATION_ID: string;
     CORS_ORIGIN: string;
-    TEST_MIGRATIONS: import("cloudflare:test").D1Migration[];
-  }
-}
-
-declare module "cloudflare:test" {
-  // Typed `env` for test files importing from "cloudflare:test".
-  interface ProvidedEnv extends Env {
+    ENABLE_SERVICE: string;
+    ADMIN_SEED_SECRET: string;
     TEST_MIGRATIONS: import("cloudflare:test").D1Migration[];
   }
 }

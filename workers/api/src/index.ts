@@ -34,6 +34,20 @@ import {
   handleUpdateLocation,
 } from "./routes/locations-admin";
 import { handleCapabilities } from "./routes/capabilities-admin";
+import {
+  handleCreateException,
+  handleCreateServicePeriod,
+  handleDeleteException,
+  handleDeleteServicePeriod,
+  handleGetExceptions,
+  handleGetFloorPlan,
+  handleGetServicePeriods,
+  handleGetServiceSettings,
+  handlePatchServicePeriod,
+  handlePutFloorPlan,
+  handlePutServiceSettings,
+} from "./routes/service";
+import { serviceEnabled } from "./capabilities";
 import type { Env, QueueMessage } from "./env";
 
 export default {
@@ -180,6 +194,50 @@ export default {
       );
       if (adminSyncMatch && request.method === "POST") {
         return handleSyncLocationSchedules(request, env, adminSyncMatch[1]);
+      }
+
+      // ── Service module (flag off → falls through to 404) ────────────────
+      if (serviceEnabled(env) && path.startsWith("/service/")) {
+        if (path === "/service/settings" && request.method === "GET") {
+          return handleGetServiceSettings(request, env);
+        }
+        if (path === "/service/settings" && request.method === "PUT") {
+          return handlePutServiceSettings(request, env);
+        }
+
+        if (path === "/service/floor-plan" && request.method === "GET") {
+          return handleGetFloorPlan(request, env);
+        }
+        if (path === "/service/floor-plan" && request.method === "PUT") {
+          return handlePutFloorPlan(request, env);
+        }
+
+        if (path === "/service/periods" && request.method === "GET") {
+          return handleGetServicePeriods(request, env);
+        }
+        if (path === "/service/periods" && request.method === "POST") {
+          return handleCreateServicePeriod(request, env);
+        }
+
+        const periodMatch = path.match(/^\/service\/periods\/([^/]+)$/);
+        if (periodMatch && request.method === "PATCH") {
+          return handlePatchServicePeriod(request, env, periodMatch[1]);
+        }
+        if (periodMatch && request.method === "DELETE") {
+          return handleDeleteServicePeriod(request, env, periodMatch[1]);
+        }
+
+        if (path === "/service/exceptions" && request.method === "GET") {
+          return handleGetExceptions(request, env);
+        }
+        if (path === "/service/exceptions" && request.method === "POST") {
+          return handleCreateException(request, env);
+        }
+
+        const exceptionMatch = path.match(/^\/service\/exceptions\/([^/]+)$/);
+        if (exceptionMatch && request.method === "DELETE") {
+          return handleDeleteException(request, env, exceptionMatch[1]);
+        }
       }
 
       if (path === "/leads" && request.method === "GET") {
