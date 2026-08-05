@@ -4,7 +4,7 @@
 **Baseline:** `ARCHITECTURE-AUDIT.md`, schema version `0033`
 **Target schema version on completion:** `0040`
 **Author of record:** architecture agreed with Joachim Grochowski, Phiof Digital
-**Status:** Phase 2 gate passed — Phase 3 next
+**Status:** Phase 4 merged — next deliverable is Phase 5+6 (guest booking + notifications) as one closed loop
 
 ---
 
@@ -69,12 +69,12 @@ A gastro pub with rooms, the GM at Australasia Manchester, and the owner of Fenn
 | Branch | Contents | Depends on |
 |---|---|---|
 | `feat/service-core` | Migrations 0034–0035, venue settings, rooms, tables, service periods, floor plan editor | — |
-| `feat/reservations` | Migration 0036, availability engine, assignment engine, reservation CRUD, manager day/floor views | `service-core` |
-| `feat/guest-booking` | Public booking routes, guest booking app, guest magic links | `reservations` |
-| `feat/waitlist` | Migration 0037, waitlist queue, notify, convert | `reservations` |
-| `feat/payments` | Migration 0038, Stripe deposits and card-on-file | `guest-booking` |
-| `feat/notifications` | Migration 0039, Resend/Telnyx templates, cron dispatcher | `reservations` |
-| `feat/service-stats` | Stats endpoints and workspace | `reservations`, `waitlist` |
+| `feat/reservations` | Migration 0036, availability engine, assignment engine, reservation CRUD | `service-core` |
+| `feat/service-console` | Manager today/floor/timeline console, `GET /service/day` | `reservations` |
+| `feat/guest-loop` | **Phases 5+6 together:** public booking + confirmation/reminder notifications (one demoable closed loop) | `service-console` |
+| `feat/waitlist` | Migration 0037, waitlist queue, notify, convert | `guest-loop` |
+| `feat/payments` | Migration 0038, Stripe deposits and card-on-file | `guest-loop` |
+| `feat/service-stats` | Stats endpoints and workspace | `guest-loop`, `waitlist` |
 
 Each branch merges to `pdc-template main` when its phase gate passes. `pdc-phiof` merges `upstream/main` after each.
 
@@ -1198,7 +1198,7 @@ The global auth gate rejects unknown routes without a session. Adding a route wi
 |---|---|---|
 | `GET` | `/service/day` | `?date=` — reservations, waitlist, pacing, unassigned |
 | `GET` | `/service/floor` | `?date=&at=` — rooms, tables, occupancy at a time |
-| `GET` | `/service/availability` | Staff channel, includes unavailable slots with reasons |
+| `GET` | `/service/availability` | **Requires** `channel=staff\|online`. Includes unavailable slots with reasons (staff typically needs them; online callers may filter client-side) |
 | `POST` | `/service/reservations` | Create (phone, walk-in, staff) |
 | `GET` | `/service/reservations/:id` | Detail + events + guest history |
 | `PATCH` | `/service/reservations/:id` | Time, party, notes, tags |
@@ -1535,18 +1535,32 @@ Web plugin registered, layout mode, drag/resize/rotate, combinations UI, room ta
 ### Phase 3 — Availability and assignment
 Migration 0036. Pure engines, fully unit tested, before any UI. `GET /service/availability`, `POST /service/reservations`, status transitions, hold mechanics with the conditional insert.
 **Gate:** the full availability and assignment test suites pass, including the 20-way concurrency test. This is the phase to spend Fable on.
+**Gate status:** passed — engines + concurrency suites green on `main` (schema 0036).
 
 ### Phase 4 — Manager console
 Today view, floor service mode, timeline, reservation drawer, pacing ribbon, SSE wiring.
 **Gate:** a manager can take a phone booking, assign it, seat it, and finish it without touching a settings screen.
+**Gate status:** merged to `main` (2026-08-05) via `feat/service-console`. Layout mode sits behind an explicit toggle; console is the default Service view.
 
-### Phase 5 — Guest booking
-Public routes, allowlist, Turnstile, rate limits, the six-step flow, manage page, guest tokens.
-**Gate:** the anti-mistake list in §8 verified item by item on a real phone. Book, change, and cancel end to end.
+### Phase 5 + 6 — Guest booking + notifications (one deliverable)
 
-### Phase 6 — Notifications
-Migration 0039, cron trigger, dispatcher, email templates, SMS, scheduling and cancellation.
-**Gate:** book → confirmation lands in under 30 seconds; reminders visible as scheduled rows with correct times; cancel removes them.
+Do **not** ship Phase 5 without Phase 6. A booking that creates a row but never emails or texts looks broken to a GM. Treat the closed loop as the unit of work:
+
+> Guest books → confirmation email/SMS lands → reminder is scheduled → manager sees the booking appear live on the floor plan.
+
+That loop is the sales demo and the first thing a venue can actually run.
+
+**Phase 5 scope:** public routes, allowlist, Turnstile, rate limits, the six-step flow, manage page, guest tokens. Every availability call must pass `channel=online` (the param is required server-side — see §20).
+
+**Phase 6 scope:** migration 0039, cron trigger, dispatcher, confirmation + reminder email/SMS templates, scheduling and cancellation of scheduled rows.
+
+**Combined gate:**
+1. Anti-mistake list in §8 verified item by item on a real phone (book, change, cancel).
+2. Book → confirmation lands in under 30 seconds.
+3. Reminder visible as a scheduled row with the correct send time; cancel removes it.
+4. New booking appears on the manager console floor/today view without a manual refresh (SSE).
+
+Suggested model: Opus 5 for the guest UI and templates; Fable 5 for the cron dispatcher and hold/idempotency edges.
 
 ### Phase 7 — Waitlist
 Migration 0037, queue, estimate, notify, seat, date waitlist, promotion on cancellation.
@@ -1585,7 +1599,7 @@ Recorded so a future session does not silently reverse them.
 - No staging environment. Migrations go from local to production. With money and guest data now in scope, a staging Worker and D1 is no longer optional.
 - No error tracking. `/health` and JSON logs are not enough once a real venue is live during service. Add Workers Observability or Sentry before Phase 9.
 - The console opens a second `EventSource` on `/events/stream` alongside the inbox's own, doubling the 800ms poll against `domain_events` for any user with both open. Browsers allow six connections per origin so it works, but a shared multiplexer would have to live in core inbox code, which the plugin registry convention forbids a plugin from editing. Left as is deliberately; revisit when a third plugin needs a stream, at which point the multiplexer belongs in core next to the existing subscription rather than in any one plugin.
-- `GET /service/availability` defaults to `channel=staff`, and **Phase 5's guest flow must pass `channel=online` explicitly.** The staff channel deliberately has no online party-size bounds and does not set `reserveLargeTables`, so a guest request that omits the parameter is offered the eight-top for a party of two and is never told a twelve-cover party is over the online maximum. The default is right for the console, which is the only caller today, and wrong for every guest-facing one. Either pass the parameter at every guest call site or make `channel` a required parameter on the public booking route — do not change the default, because the console depends on seeing unavailable slots and their reasons.
+- `GET /service/availability` **requires** `channel=staff` or `channel=online` (400 `CHANNEL_REQUIRED` if omitted or invalid). Closed 2026-08-05 — the previous silent `staff` default would have let a guest caller sell staff-only inventory and ignore online party bounds. The console already passes `channel=staff`; Phase 5 public routes must pass `channel=online` at every call site. Do not reintroduce a default.
 - The concurrency guarantee is proven only within a single Miniflare instance. `holds-concurrency.test.ts` and `reservations-concurrency.test.ts` fire 20 parallel reserves at one table and assert one winner, but both run in one isolate against one local D1. The property they demonstrate — that the conditional `INSERT … WHERE NOT EXISTS` cannot be split between check and write — carries to production only because D1 serialises every write through a single primary. That is a documented property of the platform, not something this suite has observed. Before the pilot, run a real multi-region load test against a deployed Worker: concurrent reserves from at least two colos at one slot, asserting one 201 and one reservation row. If it ever fails, the schema does not change — the fix is a Durable Object per location fronting the hold insert.
 - Floor plan saves are last-write-wins. `PUT /service/floor-plan` submits the whole plan and has no concurrency check, so two managers editing layouts at once will silently overwrite each other — the second save wins entirely, and the first manager sees no indication their work was discarded. Closing it needs a version column on `rooms`, returned by `GET /service/floor-plan` and checked against `If-Match` on `PUT`, rejecting stale saves with `409`. Low priority: it takes two managers editing layouts simultaneously, which is rare outside initial setup. Revisit if a multi-manager venue reports a layout reverting.
 

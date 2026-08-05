@@ -132,19 +132,40 @@ beforeEach(async () => {
 
 describe("GET /service/availability", () => {
   it("requires a session", async () => {
-    const res = await call(`/service/availability?date=${DATE}`);
+    const res = await call(
+      `/service/availability?date=${DATE}&partySize=2&channel=staff`
+    );
     expect(res.status).toBe(401);
   });
 
+  it("requires channel=staff or channel=online", async () => {
+    const missing = await call(
+      `/service/availability?date=${DATE}&partySize=2`,
+      { token }
+    );
+    expect(missing.status).toBe(400);
+    const body = (await missing.json()) as { code: string };
+    expect(body.code).toBe("CHANNEL_REQUIRED");
+
+    const junk = await call(
+      `/service/availability?date=${DATE}&partySize=2&channel=guest`,
+      { token }
+    );
+    expect(junk.status).toBe(400);
+  });
+
   it("returns slots including unavailable ones with a reason", async () => {
-    const res = await call(`/service/availability?date=${DATE}&partySize=2`, {
-      token,
-    });
+    const res = await call(
+      `/service/availability?date=${DATE}&partySize=2&channel=staff`,
+      { token }
+    );
     expect(res.status).toBe(200);
 
     const body = (await res.json()) as {
+      channel: string;
       slots: { time: string; available: boolean; reason?: string }[];
     };
+    expect(body.channel).toBe("staff");
     expect(body.slots.length).toBeGreaterThan(0);
     // Every unavailable slot explains itself — the endpoint exists to answer
     // "why can't I book 8pm".
@@ -154,9 +175,10 @@ describe("GET /service/availability", () => {
   });
 
   it("rejects a nonsense party size", async () => {
-    const res = await call(`/service/availability?date=${DATE}&partySize=0`, {
-      token,
-    });
+    const res = await call(
+      `/service/availability?date=${DATE}&partySize=0&channel=staff`,
+      { token }
+    );
     expect(res.status).toBe(400);
   });
 });

@@ -132,9 +132,20 @@ export async function handleGetAvailability(
     );
   }
 
-  // Staff channel by default: it is the only caller until Phase 5, and it is
-  // the one that must see unavailable slots and their reasons.
-  const channel = url.searchParams.get("channel") === "online" ? "online" : "staff";
+  // channel is required — never default. Staff and online inventory rules differ
+  // (party bounds, reserveLargeTables, online_bookable). A silent staff default
+  // would let a guest caller sell staff-only inventory; see §20.
+  const channelParam = url.searchParams.get("channel");
+  if (channelParam !== "online" && channelParam !== "staff") {
+    return serviceError(
+      request,
+      env,
+      400,
+      "CHANNEL_REQUIRED",
+      "channel must be 'staff' or 'online'"
+    );
+  }
+  const channel = channelParam;
   const roomIds = url.searchParams.get("roomIds")?.split(",").filter(Boolean);
 
   const loaded = await loadAvailability(env, locationId, {
