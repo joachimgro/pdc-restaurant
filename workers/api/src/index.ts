@@ -51,6 +51,7 @@ import {
   handleAssignTables,
   handleCreateReservation,
   handleGetAvailability,
+  handleGetServiceDay,
   handleGetReservation,
   handlePatchReservation,
   handleReservationStatus,
@@ -249,6 +250,10 @@ export default {
 
         if (path === "/service/availability" && request.method === "GET") {
           return handleGetAvailability(request, env);
+        }
+
+        if (path === "/service/day" && request.method === "GET") {
+          return handleGetServiceDay(request, env);
         }
 
         if (path === "/service/reservations" && request.method === "POST") {

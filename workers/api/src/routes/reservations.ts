@@ -29,7 +29,13 @@ import {
   reservationTableIds,
 } from "../plugins/service/db/reservations";
 import { getVenueSettings } from "../plugins/service/db/venue";
-import { localToUtcIso, venueLocalDate } from "../plugins/service/time";
+import { listServicePeriods } from "../plugins/service/db/periods";
+import { listReservationsForDate } from "../plugins/service/db/day";
+import {
+  dayOfWeekForDate,
+  localToUtcIso,
+  venueLocalDate,
+} from "../plugins/service/time";
 
 // ── Shared plumbing ──────────────────────────────────────────────────────────
 
@@ -152,6 +158,69 @@ export async function handleGetAvailability(
     largePartyMessage: loaded.slots.some((s) => s.reason === "party_too_large")
       ? settings.largePartyMessage
       : null,
+  });
+}
+
+// ── GET /service/day ─────────────────────────────────────────────────────────
+
+/**
+ * Everything the console needs to render one service date in a single request.
+ *
+ * Deliberately does not include the floor plan: it changes rarely and already
+ * has its own cacheable route, so the console fetches the two in parallel
+ * rather than re-sending 28 tables on every date change.
+ *
+ * Summary figures are left to the client, which has every reservation here and
+ * the tables from the floor plan — computing them twice in two places is how
+ * the header strip and the list start disagreeing.
+ */
+export async function handleGetServiceDay(
+  request: Request,
+  env: Env
+): Promise<Response> {
+  const session = await requireSession(request, env);
+  if (session instanceof Response) return session;
+
+  const locationId = await resolveLocationId(request, env);
+  if (!locationId) {
+    return serviceError(request, env, 404, "NO_LOCATION", "No location configured");
+  }
+
+  const settings = await getVenueSettings(env, locationId);
+  if (!settings) {
+    return serviceError(request, env, 404, "NO_SETTINGS", "Venue is not configured");
+  }
+
+  const url = new URL(request.url);
+  const serviceDate =
+    url.searchParams.get("date") ?? venueLocalDate(new Date(), settings.timezone);
+
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(serviceDate)) {
+    return serviceError(
+      request,
+      env,
+      400,
+      "INVALID_DATE",
+      "date must be YYYY-MM-DD"
+    );
+  }
+
+  const [periodsResponse, reservations] = await Promise.all([
+    listServicePeriods(env, locationId),
+    listReservationsForDate(env, locationId, serviceDate),
+  ]);
+
+  const weekday = dayOfWeekForDate(serviceDate);
+
+  return jsonResponse(request, env, {
+    serviceDate,
+    settings,
+    periods: periodsResponse.periods.filter(
+      (p) => p.isActive && p.dayOfWeek === weekday
+    ),
+    venueTurnRules: periodsResponse.venueTurnRules,
+    venuePacingRules: periodsResponse.venuePacingRules,
+    reservations,
   });
 }
 

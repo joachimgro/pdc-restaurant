@@ -671,3 +671,59 @@ describe("PUT /service/reservations/:id/tables", () => {
     ).toBe(1);
   });
 });
+
+describe("GET /service/day", () => {
+  it("requires a session", async () => {
+    const res = await call(`/service/day?date=${DATE}`);
+    expect(res.status).toBe(401);
+  });
+
+  it("returns every status, not just the occupying ones", async () => {
+    const created = await call("/service/reservations", {
+      method: "POST",
+      token,
+      body: booking(),
+    });
+    const { id } = (await created.json()) as { id: string };
+    await call(`/service/reservations/${id}/status`, {
+      method: "POST",
+      token,
+      body: JSON.stringify({ action: "cancel", reason: "Test" }),
+    });
+
+    const res = await call(`/service/day?date=${DATE}`, { token });
+    expect(res.status).toBe(200);
+
+    const body = (await res.json()) as {
+      serviceDate: string;
+      reservations: { id: string; status: string; tableIds: string[] }[];
+      periods: { id: string }[];
+      settings: { timezone: string };
+    };
+    // A manager needs to see the cancellation, even though availability ignores it.
+    expect(body.reservations.map((r) => r.status)).toContain("cancelled");
+    expect(body.serviceDate).toBe(DATE);
+    expect(body.settings.timezone).toBe("Europe/London");
+    expect(body.periods).toHaveLength(1);
+  });
+
+  it("attaches table ids to each reservation without a query per booking", async () => {
+    await call("/service/reservations", { method: "POST", token, body: booking() });
+    const res = await call(`/service/day?date=${DATE}`, { token });
+    const body = (await res.json()) as {
+      reservations: { tableIds: string[] }[];
+    };
+    expect(body.reservations[0].tableIds).toHaveLength(1);
+  });
+
+  it("returns an empty day rather than failing", async () => {
+    const res = await call("/service/day?date=2026-09-11", { token });
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { reservations: [] }).reservations).toEqual([]);
+  });
+
+  it("rejects a malformed date", async () => {
+    const res = await call("/service/day?date=tonight", { token });
+    expect(res.status).toBe(400);
+  });
+});
