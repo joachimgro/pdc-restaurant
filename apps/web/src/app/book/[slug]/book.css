@@ -1,0 +1,224 @@
+:root {
+  --book-bg: #f4f1ec;
+  --book-ink: #1c1917;
+  --book-muted: #78716c;
+  --book-line: #e7e5e4;
+  --book-accent: #1c1917;
+  --book-surface: #fffcf7;
+}
+
+.book-shell {
+  min-height: 100dvh;
+  background:
+    radial-gradient(120% 80% at 10% 0%, #ebe4d8 0%, transparent 55%),
+    linear-gradient(180deg, #f7f3ec 0%, var(--book-bg) 40%, #efe8dc 100%);
+  color: var(--book-ink);
+  font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+  padding: 20px 20px 120px;
+  max-width: 480px;
+  margin: 0 auto;
+}
+
+.book-header {
+  margin-bottom: 28px;
+}
+
+.book-brand {
+  font-size: clamp(1.75rem, 6vw, 2.25rem);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  margin: 0 0 16px;
+  line-height: 1.1;
+}
+
+.book-progress {
+  height: 2px;
+  background: var(--book-line);
+  border-radius: 1px;
+  overflow: hidden;
+}
+
+.book-progress-bar {
+  height: 100%;
+  background: var(--book-accent);
+  transition: width 280ms ease;
+}
+
+.book-step h1 {
+  font-size: clamp(1.5rem, 5vw, 1.85rem);
+  font-weight: 600;
+  margin: 8px 0 8px;
+  letter-spacing: -0.02em;
+}
+
+.book-support {
+  color: var(--book-muted);
+  margin: 0 0 24px;
+  font-size: 1.05rem;
+}
+
+.book-muted {
+  color: var(--book-muted);
+  font-size: 0.95rem;
+}
+
+.book-soft {
+  margin-top: 24px;
+}
+
+.book-party-grid,
+.book-time-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+}
+
+.book-chip,
+.book-day {
+  appearance: none;
+  border: 1px solid var(--book-line);
+  background: var(--book-surface);
+  color: var(--book-ink);
+  border-radius: 4px;
+  padding: 16px 10px;
+  font: inherit;
+  font-size: 1.1rem;
+  cursor: pointer;
+  transition: transform 160ms ease, background 160ms ease, border-color 160ms ease;
+}
+
+.book-chip:active,
+.book-day:active {
+  transform: scale(0.98);
+}
+
+.book-chip.is-active,
+.book-day.is-active {
+  background: var(--book-ink);
+  color: #fff;
+  border-color: var(--book-ink);
+}
+
+.book-chip:disabled,
+.book-day:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.book-day-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.book-day {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  text-align: left;
+  padding: 18px 16px;
+}
+
+.book-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 16px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 0.85rem;
+  color: var(--book-muted);
+}
+
+.book-field input,
+.book-field textarea {
+  font: inherit;
+  font-size: 1.05rem;
+  color: var(--book-ink);
+  border: 1px solid var(--book-line);
+  border-radius: 4px;
+  padding: 14px 12px;
+  background: var(--book-surface);
+}
+
+.book-cta {
+  position: sticky;
+  bottom: 20px;
+  display: block;
+  width: 100%;
+  min-height: 56px;
+  margin-top: 24px;
+  border: 0;
+  border-radius: 4px;
+  background: var(--book-ink);
+  color: #fff;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 1.05rem;
+  font-weight: 600;
+  text-align: center;
+  text-decoration: none;
+  line-height: 56px;
+  cursor: pointer;
+}
+
+.book-cta:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.book-back {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--book-muted);
+  font: inherit;
+  padding: 0;
+  margin-bottom: 8px;
+  cursor: pointer;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 0.9rem;
+}
+
+.book-error {
+  background: #fef2f2;
+  color: #7f1d1d;
+  padding: 12px 14px;
+  border-radius: 4px;
+  margin-bottom: 16px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 0.95rem;
+}
+
+.book-soft-exit {
+  background: var(--book-surface);
+  border: 1px solid var(--book-line);
+  padding: 20px;
+  border-radius: 4px;
+}
+
+.book-ref {
+  font-size: 1.35rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  margin: 16px 0;
+}
+
+.book-confirmed .book-cta {
+  position: static;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  border: 0;
+}
+
+@media (min-width: 640px) {
+  .book-shell {
+    padding-top: 48px;
+  }
+}

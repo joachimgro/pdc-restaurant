@@ -2,7 +2,7 @@
 
 **Branch:** `feat/guest-loop` off **`main`** (Phase 4 console already merged — see §0 D0)
 **Target schema:** `0036` → **`0037`** (notifications + guest tokens; next sequential number)
-**Status:** plan revised — implement only after Joachim approves
+**Status:** implemented on `feat/guest-loop` — gate pending phone/iPad demo
 **Closed-loop demo:** guest books → confirmation email/SMS → reminder scheduled → manager sees it live on the floor
 
 This document outworks the combined Phase 5+6 gate in `SERVICE-MODULE-BUILD-SPEC.md`. Where this plan and the master spec disagree, **this plan wins for guest-loop scope**; update the master spec in the same PR that lands the code.
