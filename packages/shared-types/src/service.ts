@@ -26,6 +26,41 @@ export const TABLE_SHAPES = [
 ] as const;
 export type TableShape = (typeof TABLE_SHAPES)[number];
 
+export const RESERVATION_STATUSES = [
+  "pending_payment",
+  "confirmed",
+  "seated",
+  "finished",
+  "cancelled",
+  "no_show",
+  "expired",
+] as const;
+export type ReservationStatus = (typeof RESERVATION_STATUSES)[number];
+
+/**
+ * Statuses that hold a table against other bookings.
+ *
+ * The single source for every availability query and every conflict check.
+ * Never inline this list: a query that omits `seated` double-books occupied
+ * tables, and the omission is invisible in review.
+ */
+export const OCCUPYING_STATUSES = [
+  "pending_payment",
+  "confirmed",
+  "seated",
+] as const satisfies readonly ReservationStatus[];
+export type OccupyingStatus = (typeof OCCUPYING_STATUSES)[number];
+
+export const RESERVATION_SOURCES = [
+  "online",
+  "phone",
+  "walk_in",
+  "staff",
+  "waitlist",
+  "import",
+] as const;
+export type ReservationSource = (typeof RESERVATION_SOURCES)[number];
+
 export const EXCEPTION_KINDS = [
   "closed",
   "special_hours",
@@ -243,6 +278,112 @@ export const AvailabilityExceptionInputSchema =
 export type AvailabilityExceptionInput = z.infer<
   typeof AvailabilityExceptionInputSchema
 >;
+
+// ── Reservations ─────────────────────────────────────────────────────────────
+
+export const ReservationStatusSchema = z.enum(RESERVATION_STATUSES);
+export const ReservationSourceSchema = z.enum(RESERVATION_SOURCES);
+
+export const ReservationSchema = z.object({
+  id: z.string().min(1),
+  reference: z.string().min(1),
+  contactId: z.string().nullable(),
+  guestName: z.string().min(1).max(120),
+  guestPhone: z.string().nullable(),
+  guestEmail: z.string().nullable(),
+  partySize: z.number().int().min(1).max(100),
+  serviceDate: DateStringSchema,
+  startTime: TimeStringSchema,
+  endTime: TimeStringSchema,
+  startsAtUtc: z.string(),
+  servicePeriodId: z.string().nullable(),
+  roomId: z.string().nullable(),
+  status: ReservationStatusSchema,
+  source: ReservationSourceSchema,
+  assignmentLocked: z.boolean(),
+  occasion: z.string().nullable(),
+  allergies: z.string().nullable(),
+  guestNotes: z.string().nullable(),
+  staffNotes: z.string().nullable(),
+  tags: z.array(z.string()),
+  depositRequiredPence: z.number().int(),
+  seatedAt: z.string().nullable(),
+  finishedAt: z.string().nullable(),
+  cancelledAt: z.string().nullable(),
+  cancelReason: z.string().nullable(),
+  noShowMarkedAt: z.string().nullable(),
+  marketingOptIn: z.boolean(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+  tableIds: z.array(z.string()),
+});
+export type Reservation = z.infer<typeof ReservationSchema>;
+
+export const CreateReservationInputSchema = z.object({
+  guestName: z.string().min(1).max(120),
+  guestPhone: z.string().min(1).nullable().optional(),
+  guestEmail: z.string().email().nullable().optional(),
+  partySize: z.number().int().min(1).max(100),
+  serviceDate: DateStringSchema,
+  startTime: TimeStringSchema,
+  source: ReservationSourceSchema.optional(),
+  /** Explicit tables. Omit to let the assignment engine choose. */
+  tableIds: z.array(z.string().min(1)).optional(),
+  occasion: z.string().max(120).nullable().optional(),
+  allergies: z.string().max(500).nullable().optional(),
+  guestNotes: z.string().max(2000).nullable().optional(),
+  staffNotes: z.string().max(2000).nullable().optional(),
+  tags: z.array(z.string().min(1).max(40)).optional(),
+  marketingOptIn: z.boolean().optional(),
+});
+export type CreateReservationInput = z.infer<
+  typeof CreateReservationInputSchema
+>;
+
+export const PatchReservationInputSchema = z
+  .object({
+    partySize: z.number().int().min(1).max(100),
+    serviceDate: DateStringSchema,
+    startTime: TimeStringSchema,
+    guestName: z.string().min(1).max(120),
+    guestPhone: z.string().nullable(),
+    guestEmail: z.string().nullable(),
+    occasion: z.string().max(120).nullable(),
+    allergies: z.string().max(500).nullable(),
+    guestNotes: z.string().max(2000).nullable(),
+    staffNotes: z.string().max(2000).nullable(),
+    tags: z.array(z.string().min(1).max(40)),
+  })
+  .partial();
+export type PatchReservationInput = z.infer<typeof PatchReservationInputSchema>;
+
+export const RESERVATION_STATUS_ACTIONS = [
+  "seat",
+  "finish",
+  "no_show",
+  "cancel",
+  "reinstate",
+] as const;
+export type ReservationStatusAction =
+  (typeof RESERVATION_STATUS_ACTIONS)[number];
+
+export const ReservationStatusInputSchema = z.object({
+  action: z.enum(RESERVATION_STATUS_ACTIONS),
+  reason: z.string().max(500).nullable().optional(),
+});
+
+export const AssignTablesInputSchema = z.object({
+  tableIds: z.array(z.string().min(1)).min(1),
+});
+
+export const ReservationEventSchema = z.object({
+  id: z.string(),
+  type: z.string(),
+  actor: z.string(),
+  data: z.unknown().nullable(),
+  createdAt: z.string(),
+});
+export type ReservationEvent = z.infer<typeof ReservationEventSchema>;
 
 // ── Error envelope for /service/* and /book/* (spec §14) ─────────────────────
 

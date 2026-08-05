@@ -11,6 +11,10 @@ export const DomainEventTypeSchema = z.enum([
   "message.created",
   "typing.started",
   "typing.stopped",
+  "reservation.created",
+  "reservation.updated",
+  "reservation.status_changed",
+  "reservation.assigned",
 ]);
 export type DomainEventType = z.infer<typeof DomainEventTypeSchema>;
 
@@ -83,6 +87,56 @@ export const LeadAiRateLimitedEventSchema = baseEvent.extend({
   }),
 });
 
+/**
+ * Reservation events (spec §12). Every service write path emits one — a
+ * missing emit means a stale floor plan during service, which the audit calls
+ * out as worse than no floor plan at all.
+ *
+ * Payloads carry ids and the changed fields rather than the whole reservation:
+ * the console refetches detail on selection, and a full row here would leak
+ * guest contact details into an SSE stream every staff member is subscribed to.
+ */
+export const ReservationCreatedEventSchema = baseEvent.extend({
+  type: z.literal("reservation.created"),
+  payload: z.object({
+    reservationId: z.string(),
+    locationId: z.string(),
+    serviceDate: z.string(),
+    startTime: z.string(),
+    partySize: z.number(),
+    tableIds: z.array(z.string()),
+  }),
+});
+
+export const ReservationUpdatedEventSchema = baseEvent.extend({
+  type: z.literal("reservation.updated"),
+  payload: z.object({
+    reservationId: z.string(),
+    serviceDate: z.string(),
+    patch: z.record(z.unknown()),
+  }),
+});
+
+export const ReservationStatusChangedEventSchema = baseEvent.extend({
+  type: z.literal("reservation.status_changed"),
+  payload: z.object({
+    reservationId: z.string(),
+    serviceDate: z.string(),
+    from: z.string(),
+    to: z.string(),
+  }),
+});
+
+export const ReservationAssignedEventSchema = baseEvent.extend({
+  type: z.literal("reservation.assigned"),
+  payload: z.object({
+    reservationId: z.string(),
+    serviceDate: z.string(),
+    tableIds: z.array(z.string()),
+    assignmentLocked: z.boolean(),
+  }),
+});
+
 export const DomainEventSchema = z.discriminatedUnion("type", [
   LeadCreatedEventSchema,
   LeadUpdatedEventSchema,
@@ -93,6 +147,10 @@ export const DomainEventSchema = z.discriminatedUnion("type", [
   MessageCreatedEventSchema,
   TypingStartedEventSchema,
   TypingStoppedEventSchema,
+  ReservationCreatedEventSchema,
+  ReservationUpdatedEventSchema,
+  ReservationStatusChangedEventSchema,
+  ReservationAssignedEventSchema,
 ]);
 export type DomainEvent = z.infer<typeof DomainEventSchema>;
 
