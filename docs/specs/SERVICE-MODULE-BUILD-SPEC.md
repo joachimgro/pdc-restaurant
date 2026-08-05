@@ -1550,12 +1550,14 @@ Do **not** ship Phase 5 without Phase 6. A booking that creates a row but never 
 
 That loop is the sales demo and the first thing a venue can actually run.
 
-**Phase 5 scope:** public routes, allowlist, Turnstile, rate limits, the six-step flow, manage page, guest tokens. Every availability call must pass `channel=online` (the param is required server-side — see §20).
+**Implementation plan (source of truth for this deliverable):** [`GUEST-LOOP-BUILD-PLAN.md`](./GUEST-LOOP-BUILD-PLAN.md)
+
+**Phase 5 scope:** public routes, allowlist, Turnstile, rate limits, the six-step flow (deposit step deferred to Phase 8), manage page, guest tokens. Every availability call must pass `channel=online` (the param is required server-side — see §20).
 
 **Phase 6 scope:** migration 0039, cron trigger, dispatcher, confirmation + reminder email/SMS templates, scheduling and cancellation of scheduled rows.
 
 **Combined gate:**
-1. Anti-mistake list in §8 verified item by item on a real phone (book, change, cancel).
+1. Anti-mistake list in §8 verified item by item on a real phone (book, change, and cancel). Soft waitlist exits (call venue) until Phase 7.
 2. Book → confirmation lands in under 30 seconds.
 3. Reminder visible as a scheduled row with the correct send time; cancel removes it.
 4. New booking appears on the manager console floor/today view without a manual refresh (SSE).
