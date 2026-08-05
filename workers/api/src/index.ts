@@ -58,6 +58,8 @@ import {
 } from "./routes/reservations";
 import { serviceEnabled } from "./capabilities";
 import type { Env, QueueMessage } from "./env";
+import { handleBookRoutes } from "./routes/book";
+import { runScheduledJobs } from "./cron/dispatcher";
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
@@ -94,11 +96,13 @@ export default {
       // Everything else requires a valid staff session cookie. /auth/* routes
       // are listed as public because they manage their own session checks
       // internally (and magic-link/verify must be reachable while logged out).
+      // /book/* is public — Turnstile, rate limits, and guest tokens protect writes.
       const isPublic =
         (path === "/leads/intake" && request.method === "POST") ||
         (path === "/admin/ingest-knowledge" && request.method === "POST") ||
         path.startsWith("/auth/") ||
-        path.startsWith("/webhooks/");
+        path.startsWith("/webhooks/") ||
+        path.startsWith("/book/");
 
       if (!isPublic) {
         const session = await getStaffSession(env, request);
@@ -109,6 +113,11 @@ export default {
         if (!session && !adminBypass) {
           return jsonResponse(request, env, { error: "Unauthorized" }, 401);
         }
+      }
+
+      if (serviceEnabled(env) && path.startsWith("/book/")) {
+        const bookResponse = await handleBookRoutes(request, env, path);
+        if (bookResponse) return bookResponse;
       }
 
       if (path === "/admin/seed" && request.method === "POST") {
@@ -391,5 +400,19 @@ export default {
 
   async queue(batch: MessageBatch<QueueMessage>, env: Env): Promise<void> {
     await handleQueueBatch(batch, env);
+  },
+
+  async scheduled(
+    _controller: ScheduledController,
+    env: Env,
+    _ctx: ExecutionContext
+  ): Promise<void> {
+    try {
+      await verifySchemaVersion(env);
+    } catch (e) {
+      console.error("[cron] schema check failed", String(e));
+      return;
+    }
+    await runScheduledJobs(env);
   },
 };

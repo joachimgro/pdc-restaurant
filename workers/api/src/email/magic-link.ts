@@ -1,25 +1,15 @@
 import type { Env } from "../env";
+import { sendEmail } from "./send";
 
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
-
+/**
+ * Staff magic-link email. Uses the shared Resend caller; layout stays the
+ * Soft Bubble staff look so auth UX does not change.
+ */
 export async function sendMagicLinkEmail(
   env: Env,
   to: string,
   verifyUrl: string
 ): Promise<void> {
-  const apiKey = env.RESEND_API_KEY?.trim();
-  const from = env.AUTH_FROM_EMAIL?.trim();
-  if (!apiKey || !from) {
-    console.warn("Resend not configured — magic link URL:", verifyUrl);
-    return;
-  }
-
   const subject = "Sign in to Lead Intake";
   const html = `<!DOCTYPE html>
 <html>
@@ -49,7 +39,7 @@ export async function sendMagicLinkEmail(
           </tr>
           <tr>
             <td align="center" style="padding-bottom:28px;">
-              <a href="${escapeHtml(verifyUrl)}" style="display:inline-block;background:#FF6B6B;color:#ffffff;text-decoration:none;font-weight:600;font-size:14px;padding:14px 32px;border-radius:999px;">
+              <a href="${escapeAttr(verifyUrl)}" style="display:inline-block;background:#FF6B6B;color:#ffffff;text-decoration:none;font-weight:600;font-size:14px;padding:14px 32px;border-radius:999px;">
                 Sign in
               </a>
             </td>
@@ -57,7 +47,7 @@ export async function sendMagicLinkEmail(
           <tr>
             <td style="color:#555;font-size:11px;line-height:1.5;text-align:center;word-break:break-all;">
               Or copy this link:<br/>
-              <span style="color:#82858E;">${escapeHtml(verifyUrl)}</span>
+              <span style="color:#82858E;">${escapeAttr(verifyUrl)}</span>
             </td>
           </tr>
         </table>
@@ -67,22 +57,14 @@ export async function sendMagicLinkEmail(
 </body>
 </html>`;
 
-  const res = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      from,
-      to: [to],
-      subject,
-      html,
-    }),
-  });
+  const text = `Sign in to Lead Intake\n\n${verifyUrl}\n\nThis link expires in 15 minutes.`;
+  await sendEmail(env, { to, subject, html, text });
+}
 
-  if (!res.ok) {
-    const err = (await res.json().catch(() => ({}))) as { message?: string };
-    throw new Error(err.message ?? `Resend error ${res.status}`);
-  }
+function escapeAttr(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
 }

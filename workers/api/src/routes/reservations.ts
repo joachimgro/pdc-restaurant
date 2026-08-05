@@ -766,6 +766,13 @@ export async function handleReservationStatus(
     }).statement,
   ]);
 
+  if (parsed.data.action === "cancel") {
+    const { cancelScheduledNotifications } = await import(
+      "../notifications/schedule"
+    );
+    await cancelScheduledNotifications(env, reservationId);
+  }
+
   return jsonResponse(request, env, await getReservation(env, reservationId));
 }
 

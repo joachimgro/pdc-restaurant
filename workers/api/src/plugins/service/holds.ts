@@ -174,3 +174,34 @@ export async function holdTableIds(
 
   return (results ?? []).map((r) => r.table_id);
 }
+
+/**
+ * Delete expired, unconsumed holds (and their member rows via cascade or
+ * explicit delete). Live availability already ignores expired holds; this
+ * keeps the table from growing forever.
+ */
+export async function sweepExpiredHolds(env: Env): Promise<{ deleted: number }> {
+  // Member rows first — no FK CASCADE on hold_tables in 0036.
+  await env.DB.prepare(
+    `DELETE FROM reservation_hold_tables
+     WHERE hold_id IN (
+       SELECT id FROM reservation_holds
+       WHERE organization_id = ?
+         AND consumed_at IS NULL
+         AND expires_at <= datetime('now')
+     )`
+  )
+    .bind(env.ORGANIZATION_ID)
+    .run();
+
+  const result = await env.DB.prepare(
+    `DELETE FROM reservation_holds
+     WHERE organization_id = ?
+       AND consumed_at IS NULL
+       AND expires_at <= datetime('now')`
+  )
+    .bind(env.ORGANIZATION_ID)
+    .run();
+
+  return { deleted: result.meta.changes };
+}
