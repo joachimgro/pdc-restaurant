@@ -1,106 +1,74 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# PDC Worker — fill in every value marked TODO before first deploy.
-# Naming convention: pdc-{client-slug}-*
-# Example: client slug "acme" → pdc-acme (worker), pdc-acme-db (D1),
-#          pdc-acme-knowledge (Vectorize), pdc-acme-queue (Queue)
+# pdc-restaurant — restaurant-only PDC (Service + guest booking loop)
+# Same Cloudflare account as pdc-phiof; separate Worker / D1 / queues.
 # ─────────────────────────────────────────────────────────────────────────────
 
-# TODO: set to pdc-{client-slug}  (e.g. "pdc-acme")
-name = "pdc-CHANGE_ME"
+name = "pdc-restaurant"
 main = "src/index.ts"
 compatibility_date = "2025-06-01"
-
-# TODO: your Cloudflare account ID (found at dash.cloudflare.com → right sidebar)
-account_id = "CHANGE_ME"
+account_id = "e83effb8e12473dcd697e82d4e3d9d7b"
 
 [vars]
-# TODO: set to a unique slug for this client  (e.g. "acme" or "acme-bjj")
-ORGANIZATION_ID = "CHANGE_ME"
+ORGANIZATION_ID = "restaurant"
 
-# TODO: update once you know the web app URL (keep localhost for local dev)
 CORS_ORIGIN = "http://localhost:3000,http://127.0.0.1:3000"
 
 AI_EMBED_MODEL = "@cf/baai/bge-base-en-v1.5"
 
-# Set to "true" to enable /admin/seed and /leads/simulate (demo/dev only)
-ENABLE_DEMO_TOOLS = "false"
+# Demo tools on for pilot seeding / Turnstile bypass in local-style demos
+ENABLE_DEMO_TOOLS = "true"
 
-# Gym-style slot booking + Schedule settings (off by default — handoff mode)
+# Tuition / gym scheduling off — Service module owns the floor
 ENABLE_SIMPLE_SCHEDULING = "false"
 ENABLE_MULTI_LOCATION = "false"
 
-# ── Service module (reservations / floor plan / waitlist / deposits) ─────────
-# ENABLE_SERVICE off = every /service/* route 404s and the nav entry is hidden.
+# ── Service module ───────────────────────────────────────────────────────────
 ENABLE_SERVICE = "true"
 ENABLE_RESERVATIONS = "true"
-ENABLE_WAITLIST = "true"
-# Off until the venue's Stripe onboarding completes — policy resolution
-# returns null while disabled.
+ENABLE_WAITLIST = "false"
 ENABLE_DEPOSITS = "false"
 ENABLE_FLOOR_PLAN = "true"
-# Off = all bookings land unassigned (manual-assignment operating mode).
 ENABLE_AUTO_ASSIGN = "true"
 
-# ── Staff auth (magic-link sign-in via Resend) ───────────────────────────────
-# The hidden platform operator (super admin) is hardcoded in
-# workers/api/src/auth/constants.ts (joachim@phiof.digital) and is the same
-# across every PDC client build — no env var needed.
+# ── Staff auth ───────────────────────────────────────────────────────────────
+AUTH_FROM_EMAIL = "hello@phiof.digital"
+AUTH_WEB_ORIGIN = "http://localhost:3000"
+# GUEST_BOOKING_ORIGIN defaults to AUTH_WEB_ORIGIN for manage links
 
-# TODO: verified sender address in Resend (domain must be verified at resend.com)
-AUTH_FROM_EMAIL = "CHANGE_ME"
-
-# TODO: deployed Next.js app URL — where the verify link redirects after sign-in.
-# Defaults to the first CORS_ORIGIN if left unset.
-AUTH_WEB_ORIGIN = "CHANGE_ME"
-
-# RESEND_API_KEY is a secret — never put it here. Set with: wrangler secret put RESEND_API_KEY
-
-# ── Guest booking (public /book/*) ───────────────────────────────────────────
-# TURNSTILE_SECRET_KEY — wrangler secret put TURNSTILE_SECRET_KEY
-# TELNYX_API_KEY / TELNYX_FROM_NUMBER (or TELNYX_MESSAGING_PROFILE_ID) for SMS
-# GUEST_BOOKING_ORIGIN — origin used in manage links (defaults to AUTH_WEB_ORIGIN)
-
-# Cron: hold sweep + notification dispatch every 5 minutes
-[triggers]
-crons = ["*/5 * * * *"]
+# Secrets (set via wrangler secret put — same values as pdc-phiof where shared):
+# RESEND_API_KEY, TELNYX_API_KEY, TELNYX_FROM_NUMBER, TELNYX_WEBHOOK_PUBLIC_KEY,
+# ENCRYPTION_KEY, TURNSTILE_SECRET_KEY (optional until Turnstile wired in UI)
 
 [ai]
 binding = "AI"
 
 [[vectorize]]
 binding = "KNOWLEDGE"
-# TODO: set to pdc-{client-slug}-knowledge  (create with: wrangler vectorize create pdc-{slug}-knowledge --dimensions=768 --metric=cosine)
-index_name = "pdc-CHANGE_ME-knowledge"
+index_name = "pdc-restaurant-knowledge"
 
 [[d1_databases]]
 binding = "DB"
-# TODO: set to pdc-{client-slug}-db  (create with: wrangler d1 create pdc-{slug}-db)
-database_name = "pdc-CHANGE_ME-db"
-# TODO: paste the database_id returned by the create command above
-database_id = "CHANGE_ME"
+database_name = "pdc-restaurant-db"
+database_id = "e4147b72-3302-401e-94d2-6a8ac55bbbf5"
 migrations_dir = "migrations"
 
 [[queues.producers]]
 binding = "AI_QUEUE"
-# TODO: set to pdc-{client-slug}-queue  (create with: wrangler queues create pdc-{slug}-queue)
-queue = "pdc-CHANGE_ME-queue"
+queue = "pdc-restaurant-queue"
 
 [[queues.consumers]]
-# TODO: must match the queue name above
-queue = "pdc-CHANGE_ME-queue"
+queue = "pdc-restaurant-queue"
 max_batch_size = 1
 max_batch_timeout = 5
 max_retries = 3
-# Dead-letter queue — failed messages land here instead of being silently dropped.
-# Create with: wrangler queues create pdc-{client-slug}-dlq
-# TODO: set to pdc-{client-slug}-dlq
-dead_letter_queue = "pdc-CHANGE_ME-dlq"
+dead_letter_queue = "pdc-restaurant-dlq"
 
 [[kv_namespaces]]
 binding = "RATE_LIMITS"
-# Create with: wrangler kv namespace create RATE_LIMITS
-# Paste the returned id below (required for AI rate limiting; optional until configured)
-id = "CHANGE_ME"
+id = "2c6fcbe41e934f9fa12ed5a4895a0a24"
+
+[triggers]
+crons = ["*/5 * * * *"]
 
 [dev]
-port = 8787
+port = 8788
