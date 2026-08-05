@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { CombinationPanel } from "./CombinationPanel";
-import { FloorCanvas } from "./FloorCanvas";
+import { LayoutCanvas } from "./canvas/LayoutCanvas";
 import {
   IconAlign,
   IconDistribute,
@@ -296,7 +296,7 @@ function FloorPlanEditor() {
 
         <main className="fp-stage">
           {room ? (
-            <FloorCanvas
+            <LayoutCanvas
               key={room.id}
               room={room}
               onLongPress={(tableId, x, y) => setContext({ tableId, x, y })}
