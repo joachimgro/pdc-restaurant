@@ -70,10 +70,10 @@ A gastro pub with rooms, the GM at Australasia Manchester, and the owner of Fenn
 |---|---|---|
 | `feat/service-core` | Migrations 0034–0035, venue settings, rooms, tables, service periods, floor plan editor | — |
 | `feat/reservations` | Migration 0036, availability engine, assignment engine, reservation CRUD | `service-core` |
-| `feat/service-console` | Manager today/floor/timeline console, `GET /service/day` | `reservations` |
-| `feat/guest-loop` | **Phases 5+6 together:** public booking + confirmation/reminder notifications (one demoable closed loop) | `service-console` |
-| `feat/waitlist` | Migration 0037, waitlist queue, notify, convert | `guest-loop` |
-| `feat/payments` | Migration 0038, Stripe deposits and card-on-file | `guest-loop` |
+| `feat/service-console` | Manager today/floor/timeline console, `GET /service/day` | `reservations` — **merged to `main`** |
+| `feat/guest-loop` | **Phases 5+6 together:** public booking + confirmation/reminder notifications (one demoable closed loop) | **`main`** (console already merged — do not stack on `feat/service-console`) |
+| `feat/waitlist` | Migration 0038, waitlist queue, notify, convert | `guest-loop` |
+| `feat/payments` | Migration 0039, Stripe deposits and card-on-file | `guest-loop` |
 | `feat/service-stats` | Stats endpoints and workspace | `guest-loop`, `waitlist` |
 
 Each branch merges to `pdc-template main` when its phase gate passes. `pdc-phiof` merges `upstream/main` after each.
@@ -416,7 +416,62 @@ Statuses that occupy a table: `pending_payment`, `confirmed`, `seated`. This set
 
 **`starts_at_utc`:** computed at write time from `service_date` + `start_time` + venue timezone. Used only for ordering and reminder scheduling. **All display and availability logic uses the local date/time fields.** Do not derive local times from the UTC column — the clock change in October will produce a 23-hour day and an off-by-one service.
 
-### `0037_waitlist.sql`
+### `0037_notifications.sql`
+
+Ships with Phase 5+6 (guest loop). Next sequential after `0036`. Do **not** leave number gaps for later phases.
+
+```sql
+-- waitlist_entry_id is nullable TEXT with NO FK: waitlist_entries lands in 0038.
+-- Soft reference until Phase 7; do not add REFERENCES waitlist_entries here.
+CREATE TABLE IF NOT EXISTS notifications (
+  id TEXT PRIMARY KEY,
+  organization_id TEXT NOT NULL REFERENCES organizations(id),
+  location_id TEXT NOT NULL REFERENCES locations(id),
+  reservation_id TEXT REFERENCES reservations(id) ON DELETE CASCADE,
+  waitlist_entry_id TEXT,
+  channel TEXT NOT NULL,
+  template TEXT NOT NULL,
+  to_address TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'scheduled',
+  scheduled_for TEXT,
+  sent_at TEXT,
+  provider_message_id TEXT,
+  attempts INTEGER NOT NULL DEFAULT 0,
+  error_text TEXT,
+  idempotency_key TEXT NOT NULL UNIQUE,
+  payload_json TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_notifications_due
+  ON notifications(status, scheduled_for);
+CREATE INDEX IF NOT EXISTS idx_notifications_reservation
+  ON notifications(reservation_id);
+
+CREATE TABLE IF NOT EXISTS guest_access_tokens (
+  id TEXT PRIMARY KEY,
+  organization_id TEXT NOT NULL,
+  reservation_id TEXT REFERENCES reservations(id) ON DELETE CASCADE,
+  waitlist_entry_id TEXT,
+  token_hash TEXT NOT NULL UNIQUE,
+  scope TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  revoked_at TEXT,
+  uses INTEGER NOT NULL DEFAULT 0,
+  max_uses INTEGER,
+  last_used_at TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_guest_tokens_res ON guest_access_tokens(reservation_id);
+
+INSERT OR REPLACE INTO _meta (key, value, updated_at)
+VALUES ('schema_version', '0037', datetime('now'));
+```
+
+**`status`:** `scheduled` | `sending` | `sent` | `failed` | `cancelled` | `skipped`.  
+`sending` is the claim state for the dispatcher (see §11). `skipped` is used when send-time checks refuse delivery (e.g. reservation already cancelled).
+
+### `0038_waitlist.sql`
 
 ```sql
 CREATE TABLE IF NOT EXISTS waitlist_entries (
@@ -454,7 +509,7 @@ CREATE INDEX IF NOT EXISTS idx_waitlist_contact
   ON waitlist_entries(organization_id, contact_id);
 
 INSERT OR REPLACE INTO _meta (key, value, updated_at)
-VALUES ('schema_version', '0037', datetime('now'));
+VALUES ('schema_version', '0038', datetime('now'));
 ```
 
 **`kind`:** `walk_in` (here now, waiting for a table) | `date_waitlist` (wants a specific date that is full).
@@ -462,7 +517,7 @@ VALUES ('schema_version', '0037', datetime('now'));
 
 **Position is not stored.** It is computed as the row's rank within `(location_id, service_date, kind, status='waiting')` ordered by `priority ASC, joined_at ASC`. A stored position column goes stale on every insert and every removal and will be wrong within one service.
 
-### `0038_payments.sql`
+### `0039_payments.sql`
 
 ```sql
 CREATE TABLE IF NOT EXISTS deposit_policies (
@@ -528,7 +583,7 @@ CREATE TABLE IF NOT EXISTS payment_events (
 );
 
 INSERT OR REPLACE INTO _meta (key, value, updated_at)
-VALUES ('schema_version', '0038', datetime('now'));
+VALUES ('schema_version', '0039', datetime('now'));
 ```
 
 **`mode`:** `none` | `card_on_file` | `deposit_fixed` | `deposit_per_person`.
@@ -536,54 +591,6 @@ VALUES ('schema_version', '0038', datetime('now'));
 **`status`:** `requires_action` | `saved` | `authorized` | `succeeded` | `failed` | `refunded` | `cancelled`.
 
 Amounts are integer pence. Never floats, never strings.
-
-### `0039_notifications.sql`
-
-```sql
-CREATE TABLE IF NOT EXISTS notifications (
-  id TEXT PRIMARY KEY,
-  organization_id TEXT NOT NULL REFERENCES organizations(id),
-  location_id TEXT NOT NULL REFERENCES locations(id),
-  reservation_id TEXT REFERENCES reservations(id) ON DELETE CASCADE,
-  waitlist_entry_id TEXT REFERENCES waitlist_entries(id) ON DELETE CASCADE,
-  channel TEXT NOT NULL,
-  template TEXT NOT NULL,
-  to_address TEXT NOT NULL,
-  status TEXT NOT NULL DEFAULT 'scheduled',
-  scheduled_for TEXT,
-  sent_at TEXT,
-  provider_message_id TEXT,
-  attempts INTEGER NOT NULL DEFAULT 0,
-  error_text TEXT,
-  idempotency_key TEXT NOT NULL UNIQUE,
-  payload_json TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now')),
-  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-);
-CREATE INDEX IF NOT EXISTS idx_notifications_due
-  ON notifications(status, scheduled_for);
-CREATE INDEX IF NOT EXISTS idx_notifications_reservation
-  ON notifications(reservation_id);
-
-CREATE TABLE IF NOT EXISTS guest_access_tokens (
-  id TEXT PRIMARY KEY,
-  organization_id TEXT NOT NULL,
-  reservation_id TEXT REFERENCES reservations(id) ON DELETE CASCADE,
-  waitlist_entry_id TEXT REFERENCES waitlist_entries(id) ON DELETE CASCADE,
-  token_hash TEXT NOT NULL UNIQUE,
-  scope TEXT NOT NULL,
-  expires_at TEXT NOT NULL,
-  revoked_at TEXT,
-  uses INTEGER NOT NULL DEFAULT 0,
-  max_uses INTEGER,
-  last_used_at TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
-);
-CREATE INDEX IF NOT EXISTS idx_guest_tokens_res ON guest_access_tokens(reservation_id);
-
-INSERT OR REPLACE INTO _meta (key, value, updated_at)
-VALUES ('schema_version', '0039', datetime('now'));
-```
 
 ### `0040_guest_profiles.sql`
 
@@ -1020,11 +1027,22 @@ crons = ["*/5 * * * *"]
 The handler dispatches, in order, guarded so one failure does not block the rest:
 
 1. `sweepExpiredHolds` — delete/mark holds past `expires_at`
-2. `expirePendingPayments` — `pending_payment` older than 20 minutes → `expired`
-3. `dispatchDueNotifications` — `status='scheduled' AND scheduled_for <= now`, limit 50 per tick
-4. `expireWaitlistNotifications` — `notified` past `notify_expires_at` → flag or re-offer
+2. `expirePendingPayments` — `pending_payment` older than 20 minutes → `expired` (no-op until Phase 8)
+3. `dispatchDueNotifications` — see claim + send-time rules below
+4. `expireWaitlistNotifications` — `notified` past `notify_expires_at` → flag or re-offer (no-op until Phase 7)
 5. `markNoShows` — `confirmed` reservations 30+ minutes past start, still not seated → flag for staff (**flag, never auto-set `no_show`**)
 6. `existing Wix refresh` — preserve current behaviour
+
+### Dispatcher correctness
+
+`dispatchDueNotifications` selects due rows (`status='scheduled' AND scheduled_for <= now`, limit 50), then for each:
+
+1. **Claim atomically:** `UPDATE … SET status='sending', attempts=attempts+1 WHERE id=? AND status='scheduled'`. If `changes=0`, skip — another tick already owns it.
+2. **Send-time status check:** re-read the linked reservation. If status is `cancelled` / `no_show` / `expired` (or otherwise not eligible for that template), mark the notification `skipped` and **do not call** Resend/Telnyx. Cancel-at-schedule-time is necessary; this check is what stops the embarrassing “see you tomorrow” after a cancel race or a stuck `sending` row.
+3. **Send**, then `sent` + `provider_message_id`, or `failed` / re-queue with backoff. Recover stale `sending` rows (older than ~10 minutes) at the start of each tick so a killed Worker cannot leave permanent ghosts — and recovery must still pass the send-time check.
+4. **Timezone:** `scheduled_for` is UTC. Reminder and quiet-hours math use the venue IANA timezone (`Europe/London` for UK pilots) so BST/GMT transitions do not shift local dinner times.
+
+Full algorithm and required tests: [`GUEST-LOOP-BUILD-PLAN.md`](./GUEST-LOOP-BUILD-PLAN.md) §3a.
 
 ### Message set
 
@@ -1045,7 +1063,9 @@ Reminders are **scheduled rows inserted at booking time**, not computed at send 
 
 ### Idempotency
 
-`notifications.idempotency_key` is `UNIQUE` and deterministic: `{reservation_id}:{template}:{scheduled_for}`. Insert before send. A duplicate insert throws and the send is skipped. This is the entire duplicate-message defence and it must be in place before the first real venue goes live — a double 3am reminder will end a client relationship.
+`notifications.idempotency_key` is `UNIQUE` and deterministic: `{reservation_id}:{template}:{channel}:{scheduled_for}`. Insert at schedule time. A duplicate insert throws and the second schedule is skipped — that prevents duplicate *rows*.
+
+Duplicate *sends* under overlapping cron are a different failure mode. The claim transition `scheduled → sending` (above) is mandatory; the unique key alone is not enough once two ticks race the same due row.
 
 ### Email implementation
 
@@ -1073,7 +1093,7 @@ Emails are branded per venue from `venue_settings.brand_json` (logo URL, accent 
 
 ### SMS
 
-Reuse `sendTelnyxSms()`. Constraints:
+Reuse `sendTelnyxSms()` (port `workers/api/src/telnyx/send.ts` from `pdc-phiof` into the template — inbound verify already exists; outbound does not yet). Booking SMS does **not** go through Twilio. Constraints:
 
 - 160 characters where possible. One segment. Every SMS states the venue name — a guest with no context does not know who "Your table is ready" is from.
 - Include a short manage link. Use the reference code, not a long token, in the visible text.
@@ -1554,22 +1574,22 @@ That loop is the sales demo and the first thing a venue can actually run.
 
 **Phase 5 scope:** public routes, allowlist, Turnstile, rate limits, the six-step flow (deposit step deferred to Phase 8), manage page, guest tokens. Every availability call must pass `channel=online` (the param is required server-side — see §20).
 
-**Phase 6 scope:** migration 0039, cron trigger, dispatcher, confirmation + reminder email/SMS templates, scheduling and cancellation of scheduled rows.
+**Phase 6 scope:** migration **0037**, cron trigger, dispatcher (claim + send-time reservation check + BST-safe scheduling), confirmation + reminder email/SMS templates via Resend + **Telnyx**, scheduling and cancellation of scheduled rows.
 
 **Combined gate:**
 1. Anti-mistake list in §8 verified item by item on a real phone (book, change, and cancel). Soft waitlist exits (call venue) until Phase 7.
 2. Book → confirmation lands in under 30 seconds.
-3. Reminder visible as a scheduled row with the correct send time; cancel removes it.
+3. Reminder visible as a scheduled row with the correct send time; cancel removes it; a forced dispatcher tick after cancel sends nothing for that booking.
 4. New booking appears on the manager console floor/today view without a manual refresh (SSE).
 
-Suggested model: Opus 5 for the guest UI and templates; Fable 5 for the cron dispatcher and hold/idempotency edges.
+Suggested model: Opus 5 for the guest UI and templates; Fable 5 for the cron dispatcher claim path and hold/idempotency edges.
 
 ### Phase 7 — Waitlist
-Migration 0037, queue, estimate, notify, seat, date waitlist, promotion on cancellation.
+Migration **0038**, queue, estimate, notify, seat, date waitlist, promotion on cancellation.
 **Gate:** cancel a booking on a full date and watch exactly one waitlisted guest receive an offer.
 
 ### Phase 8 — Deposits, stats, AI hook
-Migration 0038 and 0040. Stripe end to end. Stats endpoints and view. The single narrow hook into `ai/pipeline.ts`: an inbound SMS from a number matching an upcoming reservation creates a staff task instead of an LLM reply.
+Migration **0039** and **0040**. Stripe end to end. Stats endpoints and view. The single narrow hook into `ai/pipeline.ts`: an inbound SMS from a number matching an upcoming reservation creates a staff task instead of an LLM reply.
 **Gate:** a deposit booking completes via webhook, not client optimism. Stats reconcile against hand-counted seed data.
 
 ### Phase 9 — Venue pilot
@@ -1615,9 +1635,9 @@ workers/api/
 │   ├── 0034_service_core.sql
 │   ├── 0035_service_periods.sql
 │   ├── 0036_reservations.sql
-│   ├── 0037_waitlist.sql
-│   ├── 0038_payments.sql
-│   ├── 0039_notifications.sql
+│   ├── 0037_notifications.sql
+│   ├── 0038_waitlist.sql
+│   ├── 0039_payments.sql
 │   └── 0040_guest_profiles.sql
 ├── src/
 │   ├── plugins/service/
