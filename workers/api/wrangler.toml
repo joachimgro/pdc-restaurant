@@ -55,6 +55,15 @@ AUTH_WEB_ORIGIN = "CHANGE_ME"
 
 # RESEND_API_KEY is a secret — never put it here. Set with: wrangler secret put RESEND_API_KEY
 
+# ── Guest booking (public /book/*) ───────────────────────────────────────────
+# TURNSTILE_SECRET_KEY — wrangler secret put TURNSTILE_SECRET_KEY
+# TELNYX_API_KEY / TELNYX_FROM_NUMBER (or TELNYX_MESSAGING_PROFILE_ID) for SMS
+# GUEST_BOOKING_ORIGIN — origin used in manage links (defaults to AUTH_WEB_ORIGIN)
+
+# Cron: hold sweep + notification dispatch every 5 minutes
+[triggers]
+crons = ["*/5 * * * *"]
+
 [ai]
 binding = "AI"
 

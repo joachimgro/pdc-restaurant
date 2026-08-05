@@ -27,12 +27,23 @@ export interface Env {
   AI_DISABLED?: string;
   AI_EMBED_MODEL?: string;
   TELNYX_API_KEY?: string;
+  /** E.164 from-number for outbound booking SMS (or use messaging profile). */
+  TELNYX_FROM_NUMBER?: string;
+  /** Telnyx messaging profile UUID — alternative to TELNYX_FROM_NUMBER. */
+  TELNYX_MESSAGING_PROFILE_ID?: string;
   /**
    * Telnyx webhook signing public key (base64-encoded Ed25519 public key).
    * Find in Telnyx portal → Messaging → Webhooks → your endpoint → Public Key.
    * Set with: wrangler secret put TELNYX_WEBHOOK_PUBLIC_KEY
    */
   TELNYX_WEBHOOK_PUBLIC_KEY?: string;
+  /** Cloudflare Turnstile secret for public /book hold+reserve. */
+  TURNSTILE_SECRET_KEY?: string;
+  /**
+   * Origin for guest manage links in email/SMS
+   * (defaults to AUTH_WEB_ORIGIN / first CORS_ORIGIN).
+   */
+  GUEST_BOOKING_ORIGIN?: string;
   TWILIO_ACCOUNT_SID?: string;
   TWILIO_AUTH_TOKEN?: string;
   TWILIO_API_KEY_SID?: string;
