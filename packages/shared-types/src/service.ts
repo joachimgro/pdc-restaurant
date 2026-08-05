@@ -26,6 +26,41 @@ export const TABLE_SHAPES = [
 ] as const;
 export type TableShape = (typeof TABLE_SHAPES)[number];
 
+export const RESERVATION_STATUSES = [
+  "pending_payment",
+  "confirmed",
+  "seated",
+  "finished",
+  "cancelled",
+  "no_show",
+  "expired",
+] as const;
+export type ReservationStatus = (typeof RESERVATION_STATUSES)[number];
+
+/**
+ * Statuses that hold a table against other bookings.
+ *
+ * The single source for every availability query and every conflict check.
+ * Never inline this list: a query that omits `seated` double-books occupied
+ * tables, and the omission is invisible in review.
+ */
+export const OCCUPYING_STATUSES = [
+  "pending_payment",
+  "confirmed",
+  "seated",
+] as const satisfies readonly ReservationStatus[];
+export type OccupyingStatus = (typeof OCCUPYING_STATUSES)[number];
+
+export const RESERVATION_SOURCES = [
+  "online",
+  "phone",
+  "walk_in",
+  "staff",
+  "waitlist",
+  "import",
+] as const;
+export type ReservationSource = (typeof RESERVATION_SOURCES)[number];
+
 export const EXCEPTION_KINDS = [
   "closed",
   "special_hours",

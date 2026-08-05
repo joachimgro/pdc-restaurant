@@ -5,7 +5,7 @@ import type { Env } from "./env";
  * MUST match the highest-numbered migration file in workers/api/migrations/.
  * If D1 reports a lower version, the Worker will refuse to serve traffic.
  */
-export const EXPECTED_SCHEMA_VERSION = "0035";
+export const EXPECTED_SCHEMA_VERSION = "0036";
 
 // Module-level cache — set once per Worker instance
 let schemaVersionVerified: boolean | null = null;
