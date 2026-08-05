@@ -111,9 +111,11 @@ function venueDisplayName(
 ): string {
   const brand = settings.brand;
   const brandName =
-    brand && typeof brand["name"] === "string"
-      ? (brand["name"] as string).trim()
-      : "";
+    brand && typeof brand["displayName"] === "string"
+      ? (brand["displayName"] as string).trim()
+      : brand && typeof brand["name"] === "string"
+        ? (brand["name"] as string).trim()
+        : "";
   if (brandName) return brandName;
   return settings.bookingSlug ?? "Restaurant";
 }
