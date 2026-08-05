@@ -47,6 +47,14 @@ import {
   handlePutFloorPlan,
   handlePutServiceSettings,
 } from "./routes/service";
+import {
+  handleAssignTables,
+  handleCreateReservation,
+  handleGetAvailability,
+  handleGetReservation,
+  handlePatchReservation,
+  handleReservationStatus,
+} from "./routes/reservations";
 import { serviceEnabled } from "./capabilities";
 import type { Env, QueueMessage } from "./env";
 
@@ -237,6 +245,38 @@ export default {
         const exceptionMatch = path.match(/^\/service\/exceptions\/([^/]+)$/);
         if (exceptionMatch && request.method === "DELETE") {
           return handleDeleteException(request, env, exceptionMatch[1]);
+        }
+
+        if (path === "/service/availability" && request.method === "GET") {
+          return handleGetAvailability(request, env);
+        }
+
+        if (path === "/service/reservations" && request.method === "POST") {
+          return handleCreateReservation(request, env);
+        }
+
+        // Specific sub-resources before the bare :id, or /tables and /status
+        // are swallowed by the id pattern.
+        const assignMatch = path.match(
+          /^\/service\/reservations\/([^/]+)\/tables$/
+        );
+        if (assignMatch && request.method === "PUT") {
+          return handleAssignTables(request, env, assignMatch[1]);
+        }
+
+        const statusMatch = path.match(
+          /^\/service\/reservations\/([^/]+)\/status$/
+        );
+        if (statusMatch && request.method === "POST") {
+          return handleReservationStatus(request, env, statusMatch[1]);
+        }
+
+        const reservationMatch = path.match(/^\/service\/reservations\/([^/]+)$/);
+        if (reservationMatch && request.method === "GET") {
+          return handleGetReservation(request, env, reservationMatch[1]);
+        }
+        if (reservationMatch && request.method === "PATCH") {
+          return handlePatchReservation(request, env, reservationMatch[1]);
         }
       }
 

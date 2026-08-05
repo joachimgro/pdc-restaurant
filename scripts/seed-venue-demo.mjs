@@ -366,6 +366,136 @@ for (const rule of PACING_RULES) {
   );
 }
 
+// ── Reservations ─────────────────────────────────────────────────────────────
+/**
+ * A believable Friday dinner service so Phase 4 has something to render:
+ * a full spread of statuses, allergy and occasion tags, one large party on a
+ * combination, and two unassigned bookings for the console's unassigned filter.
+ *
+ * Dated relative to today so the demo is always "tonight" — the service date
+ * is the next Friday, computed in the calendar domain rather than from a UTC
+ * timestamp, per the venue-local time rule.
+ */
+function nextFriday() {
+  const now = new Date();
+  const utcMidnight = Date.UTC(
+    now.getUTCFullYear(),
+    now.getUTCMonth(),
+    now.getUTCDate()
+  );
+  // 5 = Friday in getUTCDay()'s Sunday-based numbering.
+  const daysAhead = (5 - new Date(utcMidnight).getUTCDay() + 7) % 7 || 7;
+  const target = new Date(utcMidnight + daysAhead * 86_400_000);
+  return target.toISOString().slice(0, 10);
+}
+
+const SERVICE_DATE = nextFriday();
+const DINNER_PERIOD = "period-dinner-fri";
+
+/** Crockford base-32, no I/L/O/U — matches reference.ts. */
+function reference(seed) {
+  const alphabet = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
+  let out = "";
+  let n = seed * 2654435761;
+  for (let i = 0; i < 6; i++) {
+    out += alphabet[Math.abs(n >> (i * 5)) % alphabet.length];
+  }
+  return out;
+}
+
+function addMinutes(hhmm, minutes) {
+  const [h, m] = hhmm.split(":").map(Number);
+  const total = h * 60 + m + minutes;
+  return `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(
+    total % 60
+  ).padStart(2, "0")}`;
+}
+
+// [name, party, start, turn, tables, status, source, tags, allergies, occasion]
+const RESERVATIONS = [
+  ["Sarah Jones", 2, "18:00", 90, ["tbl-1"], "finished", "online", [], null, null],
+  ["Tom Whitfield", 4, "18:15", 105, ["tbl-5"], "finished", "phone", [], null, null],
+  ["Priya Raman", 2, "18:30", 90, ["tbl-2"], "seated", "online", ["vip"], "Coeliac", null],
+  ["Daniel Okafor", 4, "19:00", 105, ["tbl-6"], "seated", "online", [], null, "Birthday"],
+  ["Ellie Marsh", 6, "19:00", 120, ["tbl-10"], "seated", "phone", [], "Nut allergy", null],
+  ["James Bell", 2, "19:15", 90, ["tbl-8"], "confirmed", "online", [], null, null],
+  ["Aisha Khan", 4, "19:30", 105, ["tbl-7"], "confirmed", "online", ["first_visit"], null, null],
+  ["Marcus Ford", 12, "19:30", 180, ["tbl-14", "tbl-15"], "confirmed", "phone", ["vip"], null, "Anniversary"],
+  ["Nina Kowalski", 2, "19:45", 90, ["tbl-9"], "confirmed", "online", [], "Dairy free", null],
+  ["Robert Chen", 4, "20:00", 105, ["tbl-11"], "confirmed", "online", [], null, null],
+  ["Hannah Lowe", 2, "20:15", 90, ["tbl-3"], "confirmed", "walk_in", [], null, null],
+  ["Owen Pritchard", 8, "20:15", 150, ["tbl-12"], "confirmed", "phone", [], null, null],
+  ["Grace Adeyemi", 2, "20:30", 90, ["tbl-4"], "confirmed", "online", [], null, null],
+  ["Luis Fernandez", 4, "20:30", 105, [], "confirmed", "phone", [], null, null],
+  ["Clara Bennett", 2, "20:45", 90, [], "confirmed", "online", [], null, null],
+  ["Peter Nowak", 2, "18:45", 90, ["tbl-B5"], "no_show", "online", [], null, null],
+  ["Yasmin Haddad", 4, "19:15", 105, ["tbl-T1"], "cancelled", "online", [], null, null],
+];
+
+statements.push(
+  `-- Reservations for ${SERVICE_DATE}, re-runnable via deterministic ids.
+DELETE FROM reservation_tables WHERE reservation_id IN (
+  SELECT id FROM reservations WHERE location_id = ${q(
+    LOCATION_ID
+  )} AND service_date = ${q(SERVICE_DATE)}
+);
+DELETE FROM reservation_events WHERE reservation_id IN (
+  SELECT id FROM reservations WHERE location_id = ${q(
+    LOCATION_ID
+  )} AND service_date = ${q(SERVICE_DATE)}
+);
+DELETE FROM reservations WHERE location_id = ${q(
+    LOCATION_ID
+  )} AND service_date = ${q(SERVICE_DATE)};`
+);
+
+RESERVATIONS.forEach((row, index) => {
+  const [name, party, start, turn, tables, status, source, tags, allergies, occasion] = row;
+  const id = `res-demo-${index + 1}`;
+  const end = addMinutes(start, turn);
+  const roomId = tables.length
+    ? (TABLES.find((t) => `tbl-${t[0]}` === tables[0])?.[1] ?? null)
+    : null;
+
+  const seatedAt = ["seated", "finished"].includes(status)
+    ? `datetime('now')`
+    : "NULL";
+  const finishedAt = status === "finished" ? `datetime('now')` : "NULL";
+  const cancelledAt = status === "cancelled" ? `datetime('now')` : "NULL";
+  const noShowAt = status === "no_show" ? `datetime('now')` : "NULL";
+
+  statements.push(
+    `INSERT OR REPLACE INTO reservations (
+  id, organization_id, location_id, reference, contact_id, guest_name, guest_phone,
+  guest_email, party_size, service_date, start_time, end_time, starts_at_utc,
+  service_period_id, room_id, status, source, assignment_locked, occasion,
+  allergies, guest_notes, staff_notes, tags_json, deposit_required_pence,
+  seated_at, finished_at, cancelled_at, no_show_marked_at, marketing_opt_in
+) VALUES (
+  ${q(id)}, ${q(ORG_ID)}, ${q(LOCATION_ID)}, ${q(reference(index + 1))}, NULL,
+  ${q(name)}, ${q(`+44770090${String(1000 + index).slice(-4)}`)}, NULL,
+  ${party}, ${q(SERVICE_DATE)}, ${q(start)}, ${q(end)},
+  ${q(`${SERVICE_DATE}T${start}:00.000Z`)},
+  ${q(DINNER_PERIOD)}, ${roomId ? q(roomId) : "NULL"}, ${q(status)}, ${q(source)},
+  0, ${occasion ? q(occasion) : "NULL"}, ${allergies ? q(allergies) : "NULL"},
+  NULL, NULL, ${q(JSON.stringify(tags))}, 0,
+  ${seatedAt}, ${finishedAt}, ${cancelledAt}, ${noShowAt}, 0
+);`
+  );
+
+  for (const tableId of tables) {
+    statements.push(
+      `INSERT OR IGNORE INTO reservation_tables (reservation_id, table_id)
+VALUES (${q(id)}, ${q(tableId)});`
+    );
+  }
+
+  statements.push(
+    `INSERT OR REPLACE INTO reservation_events (id, organization_id, reservation_id, type, actor, data_json)
+VALUES (${q(`revt-demo-${index + 1}`)}, ${q(ORG_ID)}, ${q(id)}, 'created', 'seed', NULL);`
+  );
+});
+
 const sql = statements.join("\n\n");
 
 if (printOnly) {
@@ -381,7 +511,8 @@ const target = local ? "--local" : "--remote";
 console.log(
   `Seeding ${VENUE_NAME} into ${DB_NAME} ${target} (org ${ORG_ID})\n` +
     `  ${ROOMS.length} rooms, ${TABLES.length} tables, ${COMBINATIONS.length} combinations,\n` +
-    `  ${PERIODS.length} service periods, ${TURN_RULES.length} turn rules, ${PACING_RULES.length} pacing rules`
+    `  ${PERIODS.length} service periods, ${TURN_RULES.length} turn rules, ${PACING_RULES.length} pacing rules,\n` +
+    `  ${RESERVATIONS.length} reservations for ${SERVICE_DATE}`
 );
 
 try {
