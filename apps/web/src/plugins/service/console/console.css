@@ -1,0 +1,801 @@
+/* Manager console — Today, Floor (service mode), Timeline.
+   Tokens from globals.css §15; nothing here invents a colour. */
+
+.sc-root {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--panel);
+  color: var(--text-hi);
+}
+
+.sc-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+/* ── Header strip ────────────────────────────────────────────────────────── */
+
+.sc-header {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+
+.sc-date-input {
+  min-height: 44px;
+  padding: 6px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  background: var(--panel-2);
+  color: var(--text-hi);
+  font-size: 14px;
+}
+
+.sc-metrics {
+  display: flex;
+  gap: 24px;
+  margin: 0;
+  flex-wrap: wrap;
+}
+
+.sc-metric-label {
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-low);
+}
+
+.sc-metric-value {
+  margin: 0;
+  font-size: var(--fs-metric-sm);
+  font-weight: 600;
+  line-height: 1.1;
+}
+
+.sc-metric-suffix {
+  font-size: 14px;
+  color: var(--text-low);
+}
+
+.sc-metric.is-warn .sc-metric-value {
+  color: var(--svc-over);
+}
+
+.sc-metric.is-alert .sc-metric-value {
+  color: var(--svc-late);
+}
+
+/* ── Tabs ────────────────────────────────────────────────────────────────── */
+
+.sc-tabs,
+.sc-room-tabs {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+}
+
+.sc-tab {
+  min-height: 44px;
+  padding: 0 16px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text-mid);
+  font-size: 14px;
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+
+.sc-tab:hover {
+  background: var(--panel-2);
+  color: var(--text-hi);
+}
+
+.sc-tab.is-active {
+  background: var(--panel-2);
+  border-color: var(--border-strong);
+  color: var(--text-hi);
+}
+
+.sc-new-booking {
+  margin-left: auto;
+}
+
+/* ── Pacing ribbon ───────────────────────────────────────────────────────── */
+
+.sc-ribbon {
+  padding: 8px 16px 6px;
+  border-bottom: 1px solid var(--border);
+}
+
+.sc-ribbon-track {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 40px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.sc-ribbon-bucket {
+  position: relative;
+  flex: 1 1 0;
+  height: 100%;
+  background: var(--panel-2);
+  border-radius: 2px;
+  display: flex;
+  align-items: flex-end;
+  overflow: hidden;
+}
+
+.sc-ribbon-fill {
+  width: 100%;
+  background: var(--pace-fill);
+  /* Fills left to right once on load, then never again. */
+  animation: sc-ribbon-rise 400ms ease-out both;
+}
+
+.sc-ribbon-bucket.is-over .sc-ribbon-fill {
+  background: var(--pace-over);
+}
+
+.sc-ribbon-bucket.is-now {
+  outline: 1px solid var(--floor-select);
+  outline-offset: -1px;
+}
+
+@keyframes sc-ribbon-rise {
+  from { transform: scaleY(0); transform-origin: bottom; }
+  to   { transform: scaleY(1); transform-origin: bottom; }
+}
+
+.sc-ribbon-axis {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--text-low);
+}
+
+.sc-ribbon-cap {
+  color: var(--text-mid);
+}
+
+/* ── Layout ──────────────────────────────────────────────────────────────── */
+
+.sc-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  flex: 1;
+  min-height: 0;
+}
+
+.sc-main {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+}
+
+/* ── Reservation list ────────────────────────────────────────────────────── */
+
+.sc-filters {
+  display: flex;
+  gap: 6px;
+  padding: 10px 16px;
+  flex-wrap: wrap;
+}
+
+.sc-filter {
+  min-height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-mid);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.sc-filter.is-active {
+  background: var(--panel-2);
+  color: var(--text-hi);
+  border-color: var(--text-low);
+}
+
+.sc-groups,
+.sc-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.sc-group-time {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  margin: 0;
+  padding: 6px 16px;
+  background: var(--panel);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-low);
+  border-bottom: 1px solid var(--border);
+}
+
+.sc-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 16px 0 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.sc-row.is-active {
+  background: var(--panel-2);
+}
+
+.sc-row.is-pending {
+  opacity: 0.6;
+}
+
+.sc-row-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-height: 64px;
+  padding: 10px 16px;
+  border: none;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.sc-row-top,
+.sc-row-bottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.sc-row-name {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.sc-row-party {
+  font-size: 15px;
+  color: var(--text-mid);
+}
+
+.sc-row-table {
+  font-size: 12px;
+  color: var(--text-low);
+}
+
+.sc-row-actions {
+  display: flex;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+
+/* ── Status, always with a word ──────────────────────────────────────────── */
+
+.sc-status {
+  font-size: 12px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border-strong);
+  color: var(--text-mid);
+}
+
+.sc-status-upcoming { border-color: var(--svc-due); color: var(--svc-due); }
+.sc-status-due      { background: var(--svc-upcoming); color: var(--text-hi); }
+.sc-status-seated   { border-color: var(--svc-seated); color: var(--svc-seated); }
+.sc-status-over     { border-color: var(--svc-over); color: var(--svc-over); }
+.sc-status-late     { background: var(--accent-soft); border-color: var(--svc-late); color: var(--svc-late); }
+.sc-status-blocked  { color: var(--text-low); }
+
+/* ── Tags ────────────────────────────────────────────────────────────────── */
+
+.sc-tags {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.sc-tag {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: var(--panel-2);
+  color: var(--text-mid);
+}
+
+/* Allergy tags are non-dismissable and high contrast (§12). */
+.sc-tag-allergy,
+.sc-allergy {
+  background: var(--svc-late);
+  color: #1A1C20;
+  font-weight: 600;
+}
+
+.sc-allergy {
+  margin: 0 0 12px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+}
+
+/* ── Actions ─────────────────────────────────────────────────────────────── */
+
+.sc-action {
+  min-height: 44px;
+  padding: 0 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  background: var(--panel-2);
+  color: var(--text-hi);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.sc-action:hover:not(:disabled) { border-color: var(--text-low); }
+.sc-action:disabled { opacity: 0.4; cursor: default; }
+
+.sc-action-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-contrast);
+  font-weight: 600;
+}
+
+.sc-action-danger { color: var(--svc-late); }
+.sc-action-wide { width: 100%; }
+
+.sc-icon-btn {
+  min-width: 44px;
+  min-height: 44px;
+  border: none;
+  background: transparent;
+  color: var(--text-low);
+  font-size: 20px;
+  cursor: pointer;
+}
+
+/* ── Drawer ──────────────────────────────────────────────────────────────── */
+
+.sc-drawer {
+  border-left: 1px solid var(--border);
+  padding: 16px;
+  overflow-y: auto;
+  min-width: 0;
+}
+
+.sc-drawer-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.sc-drawer-name { margin: 0; font-size: 18px; }
+.sc-drawer-sub { margin: 4px 0 0; font-size: 12px; color: var(--text-low); }
+
+.sc-facts {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin: 0 0 14px;
+}
+
+.sc-facts dt { font-size: 11px; color: var(--text-low); }
+.sc-facts dd { margin: 2px 0 0; font-size: 13px; }
+
+.sc-lock { color: var(--svc-over); font-size: 11px; }
+
+.sc-drawer-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+
+.sc-notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 12px;
+  margin-bottom: 12px;
+  border-radius: 8px;
+  background: var(--svc-over-bg);
+  color: var(--text-hi);
+  font-size: 12px;
+}
+
+.sc-notice-error { background: var(--accent-soft); }
+
+.sc-field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
+.sc-field label { font-size: 12px; color: var(--text-mid); }
+
+.sc-input,
+.sc-textarea {
+  min-height: 44px;
+  padding: 8px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--panel-2);
+  color: var(--text-hi);
+  font-size: 14px;
+  width: 100%;
+}
+
+.sc-textarea { min-height: 64px; resize: vertical; }
+
+.sc-log-title { margin: 0 0 6px; font-size: 12px; color: var(--text-low); }
+.sc-log-list { list-style: none; margin: 0; padding: 0; font-size: 12px; }
+.sc-log-list li { display: flex; justify-content: space-between; padding: 4px 0; }
+.sc-log-actor { color: var(--text-low); }
+
+/* ── Floor (service mode) ────────────────────────────────────────────────── */
+
+.sc-floor {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.sc-floor-stage {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  padding: 12px;
+  background: var(--floor-bg);
+}
+
+.sc-canvas { flex: 1; touch-action: none; user-select: none; }
+
+.sc-table { cursor: pointer; }
+
+.sc-table-body {
+  fill: var(--svc-free);
+  stroke: var(--svc-free-line);
+  transition: fill 180ms ease, stroke 180ms ease;
+}
+
+.sc-table-upcoming .sc-table-body { fill: var(--svc-free); stroke: var(--svc-due); }
+.sc-table-due      .sc-table-body { fill: var(--svc-upcoming); stroke: var(--svc-due); }
+.sc-table-seated   .sc-table-body { fill: var(--svc-seated-bg); stroke: var(--svc-seated); }
+.sc-table-over     .sc-table-body { fill: var(--svc-over-bg); stroke: var(--svc-over); }
+.sc-table-late     .sc-table-body { fill: var(--accent-soft); stroke: var(--svc-late); }
+.sc-table-blocked  .sc-table-body { fill: var(--svc-blocked); stroke-dasharray: 6 4; }
+
+.sc-table.is-selected .sc-table-body { stroke: var(--floor-select); stroke-width: 3; }
+.sc-table.is-drop-target .sc-table-body { stroke: var(--floor-select); stroke-dasharray: 4 3; }
+.sc-table:focus { outline: none; }
+.sc-table:focus-visible .sc-table-body { stroke: var(--floor-select); stroke-width: 3; }
+
+.sc-table-label { fill: var(--text-hi); font-weight: 600; pointer-events: none; }
+.sc-table-guest,
+.sc-table-covers { fill: var(--floor-label); pointer-events: none; }
+.sc-table-allergy { fill: var(--svc-late); font-weight: 700; pointer-events: none; }
+
+.sc-badge-disc { fill: var(--panel); stroke: currentColor; }
+.sc-badge-upcoming { color: var(--svc-due); }
+.sc-badge-due      { color: var(--svc-due); }
+.sc-badge-seated   { color: var(--svc-seated); }
+.sc-badge-over     { color: var(--svc-over); }
+.sc-badge-late     { color: var(--svc-late); }
+.sc-badge-blocked  { color: var(--text-low); }
+
+.sc-drag-ghost {
+  fill: var(--floor-select);
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+/* ── Scrubber ────────────────────────────────────────────────────────────── */
+
+.sc-scrubber {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  border-top: 1px solid var(--border);
+}
+
+.sc-scrub-label { font-size: 15px; min-width: 90px; }
+.sc-scrub-live { font-size: 11px; color: var(--svc-seated); }
+.sc-scrub-input { flex: 1; min-height: 44px; accent-color: var(--accent); }
+
+/* ── Timeline ────────────────────────────────────────────────────────────── */
+
+.sc-timeline-wrap { height: 100%; display: flex; flex-direction: column; min-height: 0; }
+
+.sc-timeline {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 64px 1fr;
+  grid-template-rows: 32px 1fr;
+  overflow: auto;
+}
+
+.sc-timeline-corner {
+  position: sticky;
+  top: 0;
+  left: 0;
+  z-index: 3;
+  background: var(--panel);
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+
+.sc-timeline-times {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: grid;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+}
+
+.sc-timeline-time {
+  font-size: 11px;
+  color: var(--text-low);
+  padding-left: 4px;
+}
+
+.sc-timeline-time.is-hour { color: var(--text-mid); }
+
+.sc-timeline-labels {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  display: grid;
+  grid-auto-rows: 44px;
+  background: var(--panel);
+  border-right: 1px solid var(--border);
+}
+
+.sc-timeline-label {
+  display: flex;
+  align-items: center;
+  padding-left: 12px;
+  font-size: 13px;
+  color: var(--text-mid);
+  border-bottom: 1px solid var(--border);
+}
+
+.sc-timeline-body {
+  position: relative;
+  display: grid;
+  grid-auto-rows: 44px;
+  /* Grid lines are a background, not elements — 28 rows × 24 columns would
+     otherwise be ~670 nodes doing nothing. */
+  background-image:
+    linear-gradient(to right, var(--border) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--border) 1px, transparent 1px);
+}
+
+.sc-block {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 3px 2px;
+  padding: 0 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--panel-2);
+  color: var(--text-hi);
+  font-size: 12px;
+  cursor: grab;
+  overflow: hidden;
+  white-space: nowrap;
+  z-index: 1;
+}
+
+.sc-block-name { overflow: hidden; text-overflow: ellipsis; }
+.sc-block-party { color: var(--text-low); margin-left: auto; }
+.sc-block-allergy { color: var(--svc-late); font-weight: 700; }
+
+.sc-block-upcoming { border-color: var(--svc-due); }
+.sc-block-due      { background: var(--svc-upcoming); }
+.sc-block-seated   { background: var(--svc-seated-bg); border-color: var(--svc-seated); }
+.sc-block-over     { background: var(--svc-over-bg); border-color: var(--svc-over); }
+.sc-block-late     { background: var(--accent-soft); border-color: var(--svc-late); }
+
+.sc-block.is-dragging { opacity: 0.75; z-index: 2; cursor: grabbing; }
+
+.sc-timeline-now {
+  border-left: 2px solid var(--accent);
+  pointer-events: none;
+}
+
+/* ── Booking modal ───────────────────────────────────────────────────────── */
+
+.sc-modal { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; }
+.sc-modal-scrim { position: absolute; inset: 0; background: rgba(0,0,0,0.55); }
+
+.sc-modal-panel {
+  position: relative;
+  width: min(420px, calc(100vw - 32px));
+  max-height: calc(100vh - 64px);
+  overflow-y: auto;
+  padding: 16px;
+  border: 1px solid var(--border-strong);
+  border-radius: 14px;
+  background: var(--panel);
+}
+
+.sc-booking-head { display: flex; align-items: center; justify-content: space-between; }
+.sc-booking-head h2 { margin: 0; font-size: 16px; }
+
+.sc-slots { border: none; padding: 0; margin: 0 0 14px; }
+.sc-slots legend { font-size: 12px; color: var(--text-mid); padding: 0 0 6px; }
+
+.sc-slot-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(76px, 1fr));
+  gap: 6px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.sc-slot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-height: 44px;
+  padding: 4px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--panel-2);
+  color: var(--text-hi);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.sc-slot:disabled { opacity: 0.45; cursor: default; }
+.sc-slot.is-active { border-color: var(--accent); background: var(--accent-soft); }
+.sc-slot-reason { font-size: 9px; color: var(--text-low); }
+
+/* ── Toasts, states ──────────────────────────────────────────────────────── */
+
+.sc-toasts {
+  position: fixed;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 60;
+}
+
+.sc-toast {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: var(--panel-2);
+  border: 1px solid var(--border-strong);
+  font-size: 13px;
+}
+
+.sc-toast-error { border-color: var(--svc-late); }
+
+.sc-loading,
+.sc-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 32px;
+  color: var(--text-low);
+  font-size: 14px;
+}
+
+.sc-root :is(button, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--floor-select);
+  outline-offset: 2px;
+}
+
+/* ── Responsive (§12) ────────────────────────────────────────────────────── */
+
+/* iPad: two columns, detail as a sheet, floor plan the default tool. */
+@media (max-width: 1279px) {
+  .sc-body { grid-template-columns: minmax(0, 1fr); }
+
+  .sc-drawer {
+    position: fixed;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 40;
+    max-height: 62vh;
+    border-left: none;
+    border-top: 1px solid var(--border-strong);
+    border-radius: 16px 16px 0 0;
+    background: var(--panel);
+    box-shadow: 0 -12px 32px rgba(0, 0, 0, 0.45);
+  }
+
+  .sc-drawer-empty { display: none; }
+}
+
+/* Phone: single column, list first, detail full screen. */
+@media (max-width: 767px) {
+  .sc-metrics { gap: 14px; }
+  .sc-metric-value { font-size: 18px; }
+  .sc-drawer { max-height: 100vh; top: 0; border-radius: 0; }
+  .sc-row-actions { flex-direction: column; }
+}
+
+/* ── Motion ──────────────────────────────────────────────────────────────── */
+
+@media (prefers-reduced-motion: reduce) {
+  .sc-ribbon-fill { animation: none; }
+
+  .sc-root *,
+  .sc-root *::before,
+  .sc-root *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
+/* ── Mode bar (console ⇄ layout editor) ──────────────────────────────────── */
+
+.sc-mode-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+  flex: 0 0 auto;
+}
+
+.sc-mode-label {
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-low);
+}
+
+.sc-mode-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.sc-mode-body > * {
+  flex: 1;
+  min-height: 0;
+}

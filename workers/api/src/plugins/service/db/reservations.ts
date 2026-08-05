@@ -182,10 +182,13 @@ export async function listReservationEvents(
   reservationId: string
 ): Promise<ReservationEvent[]> {
   const { results } = await env.DB.prepare(
+    // rowid, not id, as the tie-break: created_at is second-resolution, so a
+    // booking seated and finished in the same second collides, and ordering by
+    // a random UUID then shuffles the history on screen. rowid is insert order.
     `SELECT id, type, actor, data_json, created_at
      FROM reservation_events
      WHERE reservation_id = ? AND organization_id = ?
-     ORDER BY created_at ASC, id ASC`
+     ORDER BY created_at ASC, rowid ASC`
   )
     .bind(reservationId, env.ORGANIZATION_ID)
     .all<{
