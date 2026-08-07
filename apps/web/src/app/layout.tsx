@@ -1,10 +1,16 @@
 import type { Metadata } from "next";
+import { Plus_Jakarta_Sans } from "next/font/google";
 import "./globals.css";
 
-// TODO: update title and description to match the client's brand
+const jakarta = Plus_Jakarta_Sans({
+  subsets: ["latin"],
+  variable: "--font-jakarta",
+  display: "swap",
+});
+
 export const metadata: Metadata = {
-  title: "Lead Intake",
-  description: "AI-powered lead intake",
+  title: "The Test Kitchen",
+  description: "Book a table",
 };
 
 export default function RootLayout({
@@ -13,8 +19,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
-      <body>{children}</body>
+    <html lang="en" className={jakarta.variable}>
+      <body style={{ fontFamily: "var(--font)" }}>{children}</body>
     </html>
   );
 }

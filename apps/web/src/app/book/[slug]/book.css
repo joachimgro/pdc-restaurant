@@ -1,107 +1,221 @@
-:root {
-  --book-bg: #f4f1ec;
-  --book-ink: #1c1917;
-  --book-muted: #78716c;
-  --book-line: #e7e5e4;
-  --book-accent: #1c1917;
-  --book-surface: #fffcf7;
+/* Guest book — Soft Bubble (same tokens as the dashboard / login) */
+
+.book-page {
+  min-height: 100dvh;
+  min-height: 100svh;
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+  padding: max(12px, env(safe-area-inset-top))
+    max(12px, env(safe-area-inset-right))
+    max(12px, env(safe-area-inset-bottom))
+    max(12px, env(safe-area-inset-left));
+  background:
+    radial-gradient(120% 80% at 50% -10%, rgba(255, 107, 107, 0.12) 0%, transparent 55%),
+    var(--bg-app);
+  color: var(--text);
+  font-family: var(--font);
+  -webkit-font-smoothing: antialiased;
 }
 
 .book-shell {
-  min-height: 100dvh;
-  background:
-    radial-gradient(120% 80% at 10% 0%, #ebe4d8 0%, transparent 55%),
-    linear-gradient(180deg, #f7f3ec 0%, var(--book-bg) 40%, #efe8dc 100%);
-  color: var(--book-ink);
-  font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
-  padding: 20px 20px 120px;
-  max-width: 480px;
+  width: 100%;
+  max-width: 440px;
   margin: 0 auto;
-}
-
-.book-header {
-  margin-bottom: 28px;
-}
-
-.book-brand {
-  font-size: clamp(1.75rem, 6vw, 2.25rem);
-  font-weight: 600;
-  letter-spacing: -0.02em;
-  margin: 0 0 16px;
-  line-height: 1.1;
-}
-
-.book-progress {
-  height: 2px;
-  background: var(--book-line);
-  border-radius: 1px;
+  display: flex;
+  flex-direction: column;
+  min-height: calc(100dvh - 24px);
+  min-height: calc(100svh - 24px);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-panel);
+  box-shadow: var(--shadow);
   overflow: hidden;
 }
 
-.book-progress-bar {
-  height: 100%;
-  background: var(--book-accent);
-  transition: width 280ms ease;
+.book-header {
+  flex-shrink: 0;
+  padding: 20px 20px 14px;
+  border-bottom: 1px solid var(--border);
+  background: linear-gradient(180deg, rgba(255, 107, 107, 0.06) 0%, transparent 100%);
+}
+
+.book-brand-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.book-logo {
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  border-radius: 14px;
+  background: linear-gradient(150deg, var(--accent) 0%, var(--accent-strong) 100%);
+  color: #fff;
+  font-weight: 800;
+  font-size: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 6px 16px rgba(255, 107, 107, 0.32);
+}
+
+.book-brand {
+  font-size: clamp(1.15rem, 4.5vw, 1.35rem);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+  margin: 0;
+}
+
+.book-brand-sub {
+  margin: 2px 0 0;
+  font-size: 12.5px;
+  color: var(--text-muted);
+}
+
+.book-steps {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.book-step-dot {
+  flex: 1;
+  height: 4px;
+  border-radius: var(--r-pill);
+  background: var(--elevated);
+  transition: background 220ms ease;
+}
+
+.book-step-dot.is-done,
+.book-step-dot.is-current {
+  background: var(--accent);
+}
+
+.book-step-dot.is-done {
+  opacity: 0.55;
+}
+
+.book-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 20px 20px 12px;
+  -webkit-overflow-scrolling: touch;
+}
+
+.book-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 18px;
+}
+
+.book-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 0 12px;
+  border-radius: var(--r-pill);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 12.5px;
+  font-weight: 600;
+  border: 1px solid transparent;
+}
+
+.book-back {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  font-family: var(--font);
+  font-size: 13px;
+  font-weight: 600;
+  padding: 0;
+  margin: 0 0 14px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+}
+
+.book-back:hover {
+  color: var(--text);
 }
 
 .book-step h1 {
-  font-size: clamp(1.5rem, 5vw, 1.85rem);
-  font-weight: 600;
-  margin: 8px 0 8px;
-  letter-spacing: -0.02em;
+  font-size: clamp(1.35rem, 5vw, 1.6rem);
+  font-weight: 800;
+  letter-spacing: -0.025em;
+  margin: 0 0 8px;
+  line-height: 1.2;
 }
 
 .book-support {
-  color: var(--book-muted);
-  margin: 0 0 24px;
-  font-size: 1.05rem;
+  color: var(--text-muted);
+  margin: 0 0 22px;
+  font-size: 14px;
+  line-height: 1.5;
 }
 
 .book-muted {
-  color: var(--book-muted);
-  font-size: 0.95rem;
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.5;
 }
 
-.book-soft {
-  margin-top: 24px;
-}
-
-.book-party-grid,
-.book-time-grid {
+.book-party-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 10px;
 }
 
-.book-chip,
-.book-day {
+.book-time-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.book-chip {
   appearance: none;
-  border: 1px solid var(--book-line);
-  background: var(--book-surface);
-  color: var(--book-ink);
-  border-radius: 4px;
-  padding: 16px 10px;
-  font: inherit;
-  font-size: 1.1rem;
+  border: 1px solid var(--border-strong);
+  background: var(--panel-2);
+  color: var(--text);
+  border-radius: var(--r-md);
+  min-height: 56px;
+  padding: 12px 8px;
+  font-family: var(--font);
+  font-size: 16px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
   cursor: pointer;
-  transition: transform 160ms ease, background 160ms ease, border-color 160ms ease;
+  transition: background 0.15s, border-color 0.15s, transform 0.1s, color 0.15s;
 }
 
-.book-chip:active,
-.book-day:active {
-  transform: scale(0.98);
+.book-chip:hover:not(:disabled) {
+  background: var(--elevated);
 }
 
-.book-chip.is-active,
-.book-day.is-active {
-  background: var(--book-ink);
-  color: #fff;
-  border-color: var(--book-ink);
+.book-chip:active:not(:disabled) {
+  transform: scale(0.97);
 }
 
-.book-chip:disabled,
-.book-day:disabled {
-  opacity: 0.4;
+.book-chip.is-active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-contrast);
+  box-shadow: 0 6px 16px rgba(255, 107, 107, 0.28);
+}
+
+.book-chip:disabled {
+  opacity: 0.35;
   cursor: not-allowed;
 }
 
@@ -112,113 +226,357 @@
 }
 
 .book-day {
+  appearance: none;
+  width: 100%;
   display: flex;
-  justify-content: space-between;
   align-items: center;
+  justify-content: space-between;
+  gap: 12px;
   text-align: left;
-  padding: 18px 16px;
+  min-height: 64px;
+  padding: 14px 16px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-lg);
+  background: var(--panel-2);
+  color: var(--text);
+  font-family: var(--font);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, transform 0.1s;
+}
+
+.book-day:hover:not(:disabled) {
+  background: var(--elevated);
+}
+
+.book-day:active:not(:disabled) {
+  transform: scale(0.99);
+}
+
+.book-day.is-active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.book-day:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.book-day-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.book-day-title {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.book-day-meta {
+  font-size: 12.5px;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.book-day-badge {
+  flex-shrink: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--green);
+  background: var(--green-soft);
+  border-radius: var(--r-pill);
+  padding: 6px 10px;
+}
+
+.book-day:disabled .book-day-badge {
+  color: var(--text-muted);
+  background: var(--elevated);
 }
 
 .book-field {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  margin-bottom: 16px;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  font-size: 0.85rem;
-  color: var(--book-muted);
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
+.book-field span {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-mid);
 }
 
 .book-field input,
 .book-field textarea {
-  font: inherit;
-  font-size: 1.05rem;
-  color: var(--book-ink);
-  border: 1px solid var(--book-line);
-  border-radius: 4px;
-  padding: 14px 12px;
-  background: var(--book-surface);
+  width: 100%;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+  background: var(--input);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 16px; /* iOS zoom prevention */
+  padding: 14px 14px;
+  line-height: 1.3;
+}
+
+.book-field textarea {
+  resize: vertical;
+  min-height: 88px;
+}
+
+.book-field input:focus,
+.book-field textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.book-field input::placeholder,
+.book-field textarea::placeholder {
+  color: var(--text-muted);
+}
+
+.book-footer {
+  flex-shrink: 0;
+  padding: 12px 20px max(16px, env(safe-area-inset-bottom));
+  border-top: 1px solid var(--border);
+  background: var(--panel);
 }
 
 .book-cta {
-  position: sticky;
-  bottom: 20px;
-  display: block;
+  appearance: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   width: 100%;
   min-height: 56px;
-  margin-top: 24px;
   border: 0;
-  border-radius: 4px;
-  background: var(--book-ink);
-  color: #fff;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  font-size: 1.05rem;
-  font-weight: 600;
-  text-align: center;
+  border-radius: var(--r-pill);
+  background: var(--accent);
+  color: var(--accent-contrast);
+  font-family: var(--font);
+  font-size: 15px;
+  font-weight: 700;
   text-decoration: none;
-  line-height: 56px;
   cursor: pointer;
+  box-shadow: 0 6px 16px rgba(255, 107, 107, 0.28);
+  transition: background 0.15s, transform 0.1s;
+}
+
+.book-cta:hover {
+  background: var(--accent-hover);
+}
+
+.book-cta:active {
+  transform: scale(0.98);
 }
 
 .book-cta:disabled {
-  opacity: 0.6;
+  opacity: 0.55;
   cursor: wait;
+  box-shadow: none;
 }
 
-.book-back {
-  appearance: none;
-  border: 0;
-  background: transparent;
-  color: var(--book-muted);
-  font: inherit;
-  padding: 0;
-  margin-bottom: 8px;
-  cursor: pointer;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  font-size: 0.9rem;
+.book-cta.is-secondary {
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--border-strong);
+  box-shadow: none;
+}
+
+.book-cta.is-secondary:hover {
+  background: var(--elevated);
 }
 
 .book-error {
-  background: #fef2f2;
-  color: #7f1d1d;
+  background: var(--accent-soft);
+  color: var(--accent);
   padding: 12px 14px;
-  border-radius: 4px;
+  border-radius: var(--r-md);
   margin-bottom: 16px;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  font-size: 0.95rem;
+  font-size: 13.5px;
+  font-weight: 600;
+  line-height: 1.4;
 }
 
 .book-soft-exit {
-  background: var(--book-surface);
-  border: 1px solid var(--book-line);
+  background: var(--panel-2);
+  border: 1px solid var(--border-strong);
   padding: 20px;
-  border-radius: 4px;
+  border-radius: var(--r-lg);
+}
+
+.book-soft-exit p {
+  margin: 0 0 10px;
+  color: var(--text-mid);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.book-soft-exit a {
+  color: var(--accent);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.book-soft {
+  margin-top: 20px;
+}
+
+.book-soft a {
+  color: var(--accent);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.book-confirmed {
+  text-align: center;
+  padding-top: 12px;
+}
+
+.book-confirmed .book-logo {
+  margin: 0 auto 18px;
+  width: 56px;
+  height: 56px;
+  font-size: 22px;
 }
 
 .book-ref {
-  font-size: 1.35rem;
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  margin: 16px 0;
+  display: inline-block;
+  margin: 8px 0 18px;
+  padding: 10px 16px;
+  border-radius: var(--r-md);
+  background: var(--panel-2);
+  border: 1px solid var(--border-strong);
+  font-size: 1.15rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  font-variant-numeric: tabular-nums;
 }
 
-.book-confirmed .book-cta {
-  position: static;
+.book-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  min-height: 180px;
+  color: var(--text-muted);
+  font-size: 14px;
 }
 
-.sr-only {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  border: 0;
+.book-spinner {
+  width: 28px;
+  height: 28px;
+  border: 2px solid var(--elevated);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: book-spin 0.7s linear infinite;
 }
 
-@media (min-width: 640px) {
+@keyframes book-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.book-empty {
+  text-align: center;
+  padding: 28px 12px;
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+/* Phone: edge-to-edge card feel */
+@media (max-width: 480px) {
+  .book-page {
+    padding: 0;
+    background: var(--panel);
+  }
+
   .book-shell {
-    padding-top: 48px;
+    max-width: none;
+    min-height: 100dvh;
+    min-height: 100svh;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  .book-header {
+    padding-top: max(16px, env(safe-area-inset-top));
+  }
+
+  .book-party-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .book-time-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+/* Very narrow phones */
+@media (max-width: 360px) {
+  .book-party-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .book-time-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* Tablet / desktop: roomier card, more columns */
+@media (min-width: 640px) {
+  .book-page {
+    padding: 32px 24px;
+    align-items: center;
+  }
+
+  .book-shell {
+    min-height: min(720px, calc(100dvh - 64px));
+    max-height: calc(100dvh - 64px);
+  }
+
+  .book-header {
+    padding: 24px 28px 16px;
+  }
+
+  .book-body {
+    padding: 24px 28px 16px;
+  }
+
+  .book-footer {
+    padding: 16px 28px 24px;
+  }
+
+  .book-party-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 12px;
+  }
+
+  .book-time-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 900px) {
+  .book-shell {
+    max-width: 480px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .book-chip,
+  .book-day,
+  .book-cta,
+  .book-step-dot,
+  .book-spinner {
+    transition: none;
+    animation: none;
   }
 }
