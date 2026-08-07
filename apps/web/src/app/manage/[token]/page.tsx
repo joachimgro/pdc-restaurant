@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { getManageBooking, postManageCancel } from "@/lib/api/book";
-import "../book/[slug]/book.css";
+import "../book/book.css";
 
 function formatDayLabel(date: string): string {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return date;

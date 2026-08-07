@@ -1,6 +1,6 @@
 import { Suspense } from "react";
 import BookClient from "./BookClient";
-import "./book.css";
+import "../book.css";
 
 export default function Page() {
   return (

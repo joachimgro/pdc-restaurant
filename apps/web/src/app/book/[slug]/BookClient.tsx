@@ -10,7 +10,7 @@ import {
   postBookReserve,
   type BookVenue,
 } from "@/lib/api/book";
-import "./book.css";
+import "../book.css";
 
 type Step = "party" | "date" | "time" | "details" | "confirmed";
 
