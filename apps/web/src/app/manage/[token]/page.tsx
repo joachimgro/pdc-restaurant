@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { getManageBooking, postManageCancel } from "@/lib/api/book";
-import "../../globals.css";
 import "../book/[slug]/book.css";
 
 function formatDayLabel(date: string): string {

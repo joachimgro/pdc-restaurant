@@ -6,9 +6,14 @@ export default function Page() {
   return (
     <Suspense
       fallback={
-        <main className="book-shell">
-          <p className="book-muted">Loading…</p>
-        </main>
+        <div className="book-page">
+          <main className="book-shell">
+            <div className="book-loading">
+              <div className="book-spinner" aria-hidden />
+              <p>Loading…</p>
+            </div>
+          </main>
+        </div>
       }
     >
       <BookClient />
