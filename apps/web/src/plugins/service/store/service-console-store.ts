@@ -338,12 +338,22 @@ function applyActionLocally(
 
 // ── Selectors ───────────────────────────────────────────────────────────────
 
+// Object.values().sort() allocates a new array every call. useSyncExternalStore
+// (React 19) treats that as a changed snapshot and re-subscribes forever —
+// "The result of getSnapshot should be cached". Cache by the reservations
+// record identity so the list is stable between real store updates.
+let cachedReservationMap: ServiceConsoleState["reservations"] | null = null;
+let cachedReservationList: Reservation[] = [];
+
 export function selectReservationList(s: ServiceConsoleState): Reservation[] {
-  return Object.values(s.reservations).sort(
+  if (s.reservations === cachedReservationMap) return cachedReservationList;
+  cachedReservationMap = s.reservations;
+  cachedReservationList = Object.values(s.reservations).sort(
     (a, b) =>
       a.startTime.localeCompare(b.startTime) ||
       a.guestName.localeCompare(b.guestName)
   );
+  return cachedReservationList;
 }
 
 export function selectSelected(s: ServiceConsoleState): Reservation | null {
