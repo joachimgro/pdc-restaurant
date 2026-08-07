@@ -14,13 +14,28 @@ export type ReservationEmailPayload = {
 };
 
 function brandOf(p: ReservationEmailPayload): BrandBits {
-  return (
-    p.brand ?? {
-      venueName: p.venueName,
-      addressText: p.addressText,
-      contactPhone: p.contactPhone,
-    }
-  );
+  const raw = (p.brand ?? {}) as Record<string, unknown>;
+  const fromBrand =
+    typeof raw.venueName === "string"
+      ? raw.venueName
+      : typeof raw.displayName === "string"
+        ? raw.displayName
+        : typeof raw.name === "string"
+          ? raw.name
+          : "";
+  return {
+    venueName: fromBrand.trim() || p.venueName || "Restaurant",
+    accent: typeof raw.accent === "string" ? raw.accent : null,
+    logoUrl: typeof raw.logoUrl === "string" ? raw.logoUrl : null,
+    addressText:
+      (typeof raw.addressText === "string" ? raw.addressText : null) ??
+      p.addressText ??
+      null,
+    contactPhone:
+      (typeof raw.contactPhone === "string" ? raw.contactPhone : null) ??
+      p.contactPhone ??
+      null,
+  };
 }
 
 export function reservationConfirmedEmail(p: ReservationEmailPayload): {
