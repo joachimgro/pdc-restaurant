@@ -149,7 +149,7 @@ export async function scheduleBookingNotifications(
         payload,
       });
     }
-    if (ctx.guestPhone) {
+    if (bookingSmsEnabled(env) && ctx.guestPhone) {
       await scheduleNotification(env, {
         locationId: ctx.locationId,
         reservationId: ctx.reservationId,
@@ -176,7 +176,11 @@ export async function scheduleBookingNotifications(
   }
 
   let smsReminderAt = new Date(startsAt.getTime() - 3 * 60 * 60 * 1000);
-  if (ctx.guestPhone && smsReminderAt.getTime() > now.getTime()) {
+  if (
+    bookingSmsEnabled(env) &&
+    ctx.guestPhone &&
+    smsReminderAt.getTime() > now.getTime()
+  ) {
     smsReminderAt = deferIfQuietHours(smsReminderAt, ctx.timezone);
     if (smsReminderAt.getTime() > now.getTime()) {
       await scheduleNotification(env, {
@@ -190,4 +194,8 @@ export async function scheduleBookingNotifications(
       });
     }
   }
+}
+
+function bookingSmsEnabled(env: Env): boolean {
+  return env.ENABLE_BOOKING_SMS === "true";
 }

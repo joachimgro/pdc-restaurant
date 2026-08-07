@@ -39,11 +39,13 @@ export interface Env {
   TELNYX_WEBHOOK_PUBLIC_KEY?: string;
   /** Cloudflare Turnstile secret for public /book hold+reserve. */
   TURNSTILE_SECRET_KEY?: string;
-  /**
-   * Origin for guest manage links in email/SMS
-   * (defaults to AUTH_WEB_ORIGIN / first CORS_ORIGIN).
-   */
+  /** Origin for guest manage links in email/SMS (defaults to AUTH_WEB_ORIGIN). */
   GUEST_BOOKING_ORIGIN?: string;
+  /**
+   * Set to "true" to schedule Telnyx booking SMS. Default off — email-only
+   * via Resend while SMS credentials / copy are still being piloted.
+   */
+  ENABLE_BOOKING_SMS?: string;
   TWILIO_ACCOUNT_SID?: string;
   TWILIO_AUTH_TOKEN?: string;
   TWILIO_API_KEY_SID?: string;

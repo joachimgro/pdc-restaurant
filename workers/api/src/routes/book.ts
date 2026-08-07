@@ -492,6 +492,16 @@ export async function handleBookReserve(
       "Please leave an email or a phone number"
     );
   }
+  // Email-only pilot: without SMS we need an address for the confirmation.
+  if (env.ENABLE_BOOKING_SMS !== "true" && !input.guestEmail) {
+    return bookError(
+      request,
+      env,
+      400,
+      "EMAIL_REQUIRED",
+      "Please leave an email so we can send your confirmation"
+    );
+  }
 
   const blocked = await requireTurnstile(request, env, input.turnstileToken);
   if (blocked) return blocked;

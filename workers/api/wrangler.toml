@@ -31,9 +31,12 @@ ENABLE_FLOOR_PLAN = "true"
 ENABLE_AUTO_ASSIGN = "true"
 
 # ── Staff auth ───────────────────────────────────────────────────────────────
-AUTH_FROM_EMAIL = "hello@phiof.digital"
+AUTH_FROM_EMAIL = "info@phiof.digital"
 AUTH_WEB_ORIGIN = "http://localhost:3000"
-# GUEST_BOOKING_ORIGIN defaults to AUTH_WEB_ORIGIN for manage links
+# Manage links in emails use this (defaults to AUTH_WEB_ORIGIN)
+GUEST_BOOKING_ORIGIN = "http://localhost:3000"
+# SMS off while we pilot email-only confirmations/reminders via Resend
+ENABLE_BOOKING_SMS = "false"
 
 # Secrets (set via wrangler secret put — same values as pdc-phiof where shared):
 # RESEND_API_KEY, TELNYX_API_KEY, TELNYX_FROM_NUMBER, TELNYX_WEBHOOK_PUBLIC_KEY,

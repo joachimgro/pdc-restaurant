@@ -144,8 +144,8 @@ export default function BookClient() {
       setError("What's your name?");
       return;
     }
-    if (!email.trim() && !phone.trim()) {
-      setError("Leave an email or a phone number so we can reach you");
+    if (!email.trim()) {
+      setError("Leave an email so we can send your confirmation");
       return;
     }
     try {
