@@ -30,6 +30,7 @@ describe("capabilities", () => {
       deposits: false,
       floorPlan: false,
       autoAssign: false,
+      kitchen: false,
     });
   });
 
@@ -43,6 +44,7 @@ describe("capabilities", () => {
       ENABLE_DEPOSITS: "true",
       ENABLE_FLOOR_PLAN: "true",
       ENABLE_AUTO_ASSIGN: "true",
+      ENABLE_KITCHEN: "true",
     });
     expect(getCapabilities(env)).toEqual({
       simpleScheduling: true,
@@ -53,6 +55,7 @@ describe("capabilities", () => {
       deposits: true,
       floorPlan: true,
       autoAssign: true,
+      kitchen: true,
     });
   });
 

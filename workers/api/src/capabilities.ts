@@ -9,6 +9,7 @@ export type Capabilities = {
   deposits: boolean;
   floorPlan: boolean;
   autoAssign: boolean;
+  kitchen: boolean;
 };
 
 export function simpleSchedulingEnabled(env: Env): boolean {
@@ -43,6 +44,10 @@ export function autoAssignEnabled(env: Env): boolean {
   return env.ENABLE_AUTO_ASSIGN === "true";
 }
 
+export function kitchenEnabled(env: Env): boolean {
+  return env.ENABLE_KITCHEN === "true";
+}
+
 export function getCapabilities(env: Env): Capabilities {
   return {
     simpleScheduling: simpleSchedulingEnabled(env),
@@ -53,5 +58,6 @@ export function getCapabilities(env: Env): Capabilities {
     deposits: depositsEnabled(env),
     floorPlan: floorPlanEnabled(env),
     autoAssign: autoAssignEnabled(env),
+    kitchen: kitchenEnabled(env),
   };
 }
