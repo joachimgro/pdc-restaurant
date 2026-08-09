@@ -176,8 +176,8 @@ async function notifyContextFromReservation(
     addressText: settings.addressText,
     contactPhone: settings.contactPhone,
     brand: settings.brand,
-    quietHoursStart: "21:00",
-    quietHoursEnd: "08:00",
+    quietHoursStart: settings.quietHoursStart,
+    quietHoursEnd: settings.quietHoursEnd,
   };
 }
 

@@ -7,11 +7,12 @@ name = "pdc-restaurant"
 main = "src/index.ts"
 compatibility_date = "2025-06-01"
 account_id = "e83effb8e12473dcd697e82d4e3d9d7b"
+workers_dev = true
 
 [vars]
 ORGANIZATION_ID = "restaurant"
 
-CORS_ORIGIN = "http://localhost:3000,http://127.0.0.1:3000"
+CORS_ORIGIN = "http://localhost:3000,http://127.0.0.1:3000,https://kitchen.phiof.digital,https://pdc-restaurant-web.justphiof.workers.dev"
 
 AI_EMBED_MODEL = "@cf/baai/bge-base-en-v1.5"
 
@@ -29,18 +30,21 @@ ENABLE_WAITLIST = "false"
 ENABLE_DEPOSITS = "false"
 ENABLE_FLOOR_PLAN = "true"
 ENABLE_AUTO_ASSIGN = "true"
+ENABLE_KITCHEN = "true"
 
 # ── Staff auth ───────────────────────────────────────────────────────────────
-AUTH_FROM_EMAIL = "info@phiof.digital"
-AUTH_WEB_ORIGIN = "http://localhost:3000"
+AUTH_FROM_EMAIL = "admin@bookings.phiof.digital"
+# Guest booking + contact inbox (outbound From/Reply-To and inbound match)
+BOOKING_FROM_EMAIL = "admin@bookings.phiof.digital"
+AUTH_WEB_ORIGIN = "https://kitchen.phiof.digital"
 # Manage links in emails use this (defaults to AUTH_WEB_ORIGIN)
-GUEST_BOOKING_ORIGIN = "http://localhost:3000"
+GUEST_BOOKING_ORIGIN = "https://kitchen.phiof.digital"
 # SMS off while we pilot email-only confirmations/reminders via Resend
-ENABLE_BOOKING_SMS = "false"
+ENABLE_BOOKING_SMS = "true"
 
 # Secrets (set via wrangler secret put — same values as pdc-phiof where shared):
-# RESEND_API_KEY, TELNYX_API_KEY, TELNYX_FROM_NUMBER, TELNYX_WEBHOOK_PUBLIC_KEY,
-# ENCRYPTION_KEY, TURNSTILE_SECRET_KEY (optional until Turnstile wired in UI)
+# RESEND_API_KEY, RESEND_WEBHOOK_SECRET (optional), TELNYX_API_KEY, TELNYX_FROM_NUMBER,
+# TELNYX_WEBHOOK_PUBLIC_KEY, ENCRYPTION_KEY, TURNSTILE_SECRET_KEY (optional)
 
 [ai]
 binding = "AI"
@@ -72,6 +76,11 @@ id = "2c6fcbe41e934f9fa12ed5a4895a0a24"
 
 [triggers]
 crons = ["*/5 * * * *"]
+
+# Same-site with kitchen.phiof.digital so Safari/iPad keeps the session cookie
+[[routes]]
+pattern = "api.kitchen.phiof.digital"
+custom_domain = true
 
 [dev]
 port = 8788

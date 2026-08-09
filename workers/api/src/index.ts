@@ -56,9 +56,47 @@ import {
   handlePatchReservation,
   handleReservationStatus,
 } from "./routes/reservations";
-import { serviceEnabled } from "./capabilities";
+import { handleGetServiceStats } from "./routes/stats";
+import {
+  handleCreateKitchenTicket,
+  handleCreateMenuCategory,
+  handleCreateMenuItem,
+  handleDeleteMenuItem,
+  handleGetKitchenMenu,
+  handleImportKitchenMenu,
+  handleKitchenTicketStatus,
+  handleListKitchenTickets,
+  handleParseMenuImage,
+  handleReorderKitchenMenu,
+} from "./routes/kitchen";
+import {
+  handleFlagGuestThread,
+  handleGetGuestThread,
+  handleGetReservationContact,
+  handleListGuestThreads,
+  handleMuteGuestThread,
+  handlePostReservationContact,
+  handleUnmuteGuestThread,
+} from "./routes/guest-threads";
+import {
+  handleConvertWaitlist,
+  handleCreateWaitlist,
+  handleListWaitlist,
+  handleNotifyWaitlist,
+  handleRemoveWaitlist,
+} from "./routes/waitlist";
+import {
+  handleEraseGuest,
+  handleExportGuest,
+  handleGetGuestProfileByEmail,
+  handlePatchGuestProfile,
+  handlePatchReservationGuestProfile,
+} from "./routes/guests";
+import { handleStripeWebhook } from "./routes/stripe-webhook";
+import { kitchenEnabled, serviceEnabled } from "./capabilities";
 import type { Env, QueueMessage } from "./env";
 import { handleBookRoutes } from "./routes/book";
+import { handleResendWebhook } from "./routes/resend-inbound";
 import { runScheduledJobs } from "./cron/dispatcher";
 
 export default {
@@ -265,6 +303,10 @@ export default {
           return handleGetServiceDay(request, env);
         }
 
+        if (path === "/service/stats" && request.method === "GET") {
+          return handleGetServiceStats(request, env);
+        }
+
         if (path === "/service/reservations" && request.method === "POST") {
           return handleCreateReservation(request, env);
         }
@@ -285,12 +327,145 @@ export default {
           return handleReservationStatus(request, env, statusMatch[1]);
         }
 
+        const contactMatch = path.match(
+          /^\/service\/reservations\/([^/]+)\/contact$/
+        );
+        if (contactMatch && request.method === "GET") {
+          return handleGetReservationContact(request, env, contactMatch[1]);
+        }
+        if (contactMatch && request.method === "POST") {
+          return handlePostReservationContact(request, env, contactMatch[1]);
+        }
+
+        const guestProfileMatch = path.match(
+          /^\/service\/reservations\/([^/]+)\/guest-profile$/
+        );
+        if (guestProfileMatch && request.method === "PATCH") {
+          return handlePatchReservationGuestProfile(
+            request,
+            env,
+            guestProfileMatch[1]
+          );
+        }
+
+        if (path === "/service/guests/profile" && request.method === "GET") {
+          return handleGetGuestProfileByEmail(request, env);
+        }
+        if (path === "/service/guests/erase" && request.method === "POST") {
+          return handleEraseGuest(request, env);
+        }
+        if (path === "/service/guests/export" && request.method === "GET") {
+          return handleExportGuest(request, env);
+        }
+
+        const guestContactMatch = path.match(/^\/service\/guests\/([^/]+)$/);
+        if (guestContactMatch && request.method === "PATCH") {
+          return handlePatchGuestProfile(request, env, guestContactMatch[1]);
+        }
+
+        if (path === "/service/waitlist" && request.method === "GET") {
+          return handleListWaitlist(request, env);
+        }
+        if (path === "/service/waitlist" && request.method === "POST") {
+          return handleCreateWaitlist(request, env);
+        }
+
+        const waitlistNotifyMatch = path.match(
+          /^\/service\/waitlist\/([^/]+)\/notify$/
+        );
+        if (waitlistNotifyMatch && request.method === "POST") {
+          return handleNotifyWaitlist(request, env, waitlistNotifyMatch[1]);
+        }
+
+        const waitlistConvertMatch = path.match(
+          /^\/service\/waitlist\/([^/]+)\/convert$/
+        );
+        if (waitlistConvertMatch && request.method === "POST") {
+          return handleConvertWaitlist(request, env, waitlistConvertMatch[1]);
+        }
+
+        const waitlistRemoveMatch = path.match(
+          /^\/service\/waitlist\/([^/]+)\/remove$/
+        );
+        if (waitlistRemoveMatch && request.method === "POST") {
+          return handleRemoveWaitlist(request, env, waitlistRemoveMatch[1]);
+        }
+
+        if (path === "/service/guest-threads" && request.method === "GET") {
+          return handleListGuestThreads(request, env);
+        }
+
+        const guestThreadFlagMatch = path.match(
+          /^\/service\/guest-threads\/([^/]+)\/flag$/
+        );
+        if (guestThreadFlagMatch && request.method === "POST") {
+          return handleFlagGuestThread(request, env, guestThreadFlagMatch[1]);
+        }
+
+        const guestThreadMuteMatch = path.match(
+          /^\/service\/guest-threads\/([^/]+)\/mute$/
+        );
+        if (guestThreadMuteMatch && request.method === "POST") {
+          return handleMuteGuestThread(request, env, guestThreadMuteMatch[1]);
+        }
+
+        const guestThreadUnmuteMatch = path.match(
+          /^\/service\/guest-threads\/([^/]+)\/unmute$/
+        );
+        if (guestThreadUnmuteMatch && request.method === "POST") {
+          return handleUnmuteGuestThread(request, env, guestThreadUnmuteMatch[1]);
+        }
+
+        const guestThreadMatch = path.match(/^\/service\/guest-threads\/([^/]+)$/);
+        if (guestThreadMatch && request.method === "GET") {
+          return handleGetGuestThread(request, env, guestThreadMatch[1]);
+        }
+
         const reservationMatch = path.match(/^\/service\/reservations\/([^/]+)$/);
         if (reservationMatch && request.method === "GET") {
           return handleGetReservation(request, env, reservationMatch[1]);
         }
         if (reservationMatch && request.method === "PATCH") {
           return handlePatchReservation(request, env, reservationMatch[1]);
+        }
+      }
+
+      // ── Kitchen plugin (flag off → falls through to 404) ─────────────────
+      if (kitchenEnabled(env) && path.startsWith("/kitchen/")) {
+        if (path === "/kitchen/menu" && request.method === "GET") {
+          return handleGetKitchenMenu(request, env);
+        }
+        if (path === "/kitchen/menu/parse-image" && request.method === "POST") {
+          return handleParseMenuImage(request, env);
+        }
+        if (path === "/kitchen/menu/import" && request.method === "POST") {
+          return handleImportKitchenMenu(request, env);
+        }
+        if (path === "/kitchen/menu/reorder" && request.method === "PUT") {
+          return handleReorderKitchenMenu(request, env);
+        }
+        if (path === "/kitchen/menu/categories" && request.method === "POST") {
+          return handleCreateMenuCategory(request, env);
+        }
+        if (path === "/kitchen/menu/items" && request.method === "POST") {
+          return handleCreateMenuItem(request, env);
+        }
+        const menuItemMatch = path.match(/^\/kitchen\/menu\/items\/([^/]+)$/);
+        if (menuItemMatch && request.method === "DELETE") {
+          return handleDeleteMenuItem(request, env, menuItemMatch[1]);
+        }
+
+        if (path === "/kitchen/tickets" && request.method === "GET") {
+          return handleListKitchenTickets(request, env);
+        }
+
+        if (path === "/kitchen/tickets" && request.method === "POST") {
+          return handleCreateKitchenTicket(request, env);
+        }
+
+        const ticketStatusMatch = path.match(/^\/kitchen\/tickets\/([^/]+)\/status$/);
+        if (ticketStatusMatch && request.method === "POST") {
+          return handleKitchenTicketStatus(request, env, ticketStatusMatch[1]);
         }
       }
 
@@ -343,6 +518,14 @@ export default {
 
       if (path === "/webhooks/telnyx" && request.method === "POST") {
         return handleTelnyxWebhook(request, env);
+      }
+
+      if (path === "/webhooks/resend" && request.method === "POST") {
+        return handleResendWebhook(request, env);
+      }
+
+      if (path === "/webhooks/stripe" && request.method === "POST") {
+        return handleStripeWebhook(request, env);
       }
 
       if (path === "/webhooks/twilio" && request.method === "POST") {

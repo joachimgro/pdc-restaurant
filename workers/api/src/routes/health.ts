@@ -82,15 +82,18 @@ export async function handleHealth(
     notificationQueue = await getNotificationQueueStats(env);
     const alert = notificationQueue.alert;
     checks.notification_queue = {
-      ok: !alert.backlogOverdue && !alert.failedSpike,
+      ok: !alert.backlogOverdue && !alert.failedSpike && !alert.skipSpike,
       details: [
         `backlog_due=${notificationQueue.backlogDueNow}`,
         `oldest_due_age_min=${notificationQueue.oldestDueAgeMinutes ?? "n/a"}`,
         `failed_24h=${notificationQueue.failedLast24h}`,
+        `skipped_24h=${notificationQueue.skippedLast24h}`,
+        `skips=${JSON.stringify(notificationQueue.skippedByReason)}`,
         alert.backlogOverdue
           ? `BACKLOG>${alert.backlogThresholdMinutes}m`
           : null,
         alert.failedSpike ? `FAILED_24H>${alert.failedThreshold}` : null,
+        alert.skipSpike ? `SKIPPED_24H>${alert.skippedThreshold}` : null,
       ]
         .filter(Boolean)
         .join("; "),

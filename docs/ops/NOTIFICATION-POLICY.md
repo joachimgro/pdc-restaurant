@@ -1,5 +1,5 @@
 /**
- * Guest notification policy for Fennel / kitchen pilots.
+ * Guest notification policy for Fennel / kitchen pilots (pdc-restaurant).
  *
  * ## Reminder timing
  * - Confirmation email (+ SMS if ENABLE_BOOKING_SMS): due immediately at reserve
@@ -11,15 +11,22 @@
  *   “minimum lead hours” flag beyond that.
  *
  * ## Quiet hours
- * Default venue-local **21:00–08:00** (overridable on venue settings).
- * Applies to **email and SMS reminders** and to **review request** scheduling.
- * A due time inside the window moves to the end of the window (usually 08:00).
+ * Default venue-local **21:00–08:00**, stored on `venue_settings.quiet_hours_*`
+ * (schema 0044+) and editable via venue settings. Applies to **email and SMS
+ * reminders** and to **review request** scheduling. A due time inside the
+ * window moves to the end of the window (usually 08:00).
  *
  * ## Review requests
  * Cron schedules one email when `finished_at + review_request_delay_hours`
  * (default 4h) has elapsed. That timestamp then goes through quiet hours **and**
  * a day window **09:00–20:00** local. Example: finish 22:00 → +4h = 02:00 →
  * quiet → 08:00 → day window → **09:00**.
+ *
+ * ## SMS STOP (PECR)
+ * Inbound STOP / STOPALL / UNSUBSCRIBE / CANCEL / END / QUIT adds the phone to
+ * `sms_suppressions`. START / UNSTOP / YES removes it. Dispatcher and
+ * `sendBookingSms` both skip suppressed numbers (`error_text=sms_suppressed`).
+ * Outbound booking SMS bodies end with “Reply STOP to opt out.”
  *
  * ## Staleness (reminders only)
  * At send time, reminder templates (`reservation_reminder`,
@@ -39,9 +46,18 @@
  * Cron `*/5` × batch **50** ⇒ **600 sends/hour** per Worker/org.
  * Confirms also flush up to 10 inline at reserve.
  *
+ * ## Waitlist
+ * `ENABLE_WAITLIST=false` on this fork for Fennel go-live (fail-closed). Staff
+ * console hides the Waitlist tab; API routes return 404. Do not re-enable until
+ * waitlist notify templates share reservation quiet-hours / STOP / cancel-clear
+ * rules.
+ *
  * ## Observability
- * `GET /health` includes `notificationQueue` counts, oldest due age, failed
- * last 24h. Health **503** when oldest due-unsent age &gt; 20 min (configurable
- * `NOTIFICATION_BACKLOG_ALERT_MINUTES`) or failed_24h &gt; 10
- * (`NOTIFICATION_FAILED_24H_ALERT`), same failure class as a dead cron.
+ * `GET /health` includes `notificationQueue` counts, oldest due age, failed_24h,
+ * skipped_24h, and `skippedByReason` (past_start / stale / suppressed /
+ * cancelled / …). Health **503** when oldest due-unsent age &gt; 20 min
+ * (`NOTIFICATION_BACKLOG_ALERT_MINUTES`), failed_24h &gt; 10
+ * (`NOTIFICATION_FAILED_24H_ALERT`), or skipped_24h &gt; 35
+ * (`NOTIFICATION_SKIPPED_24H_ALERT`). Cron heartbeat is required (stale &gt;15m
+ * also fails health).
  */

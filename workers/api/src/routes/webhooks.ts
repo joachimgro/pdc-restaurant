@@ -3,6 +3,11 @@ import { processInboundSms, queueInboundAi } from "../db/inbound-sms";
 import { verifyTelnyxWebhook } from "../auth/telnyx-verify";
 import { logger } from "../log";
 import type { Env } from "../env";
+import {
+  parseSmsKeyword,
+  suppressSmsPhone,
+  unsuppressSmsPhone,
+} from "../notifications/sms-suppression";
 
 interface TelnyxPayload {
   data?: {
@@ -49,6 +54,17 @@ export async function handleTelnyxWebhook(
 
   if (!text || !fromPhone) {
     return jsonResponse(request, env, { ok: true, skipped: true });
+  }
+
+  // Booking-line STOP / START — maintain suppression before any CRM/AI work.
+  const keyword = parseSmsKeyword(text);
+  if (keyword === "stop") {
+    await suppressSmsPhone(env, fromPhone, "stop");
+    return jsonResponse(request, env, { ok: true, suppressed: true });
+  }
+  if (keyword === "start") {
+    await unsuppressSmsPhone(env, fromPhone);
+    return jsonResponse(request, env, { ok: true, unsuppressed: true });
   }
 
   const result = await processInboundSms(env, {

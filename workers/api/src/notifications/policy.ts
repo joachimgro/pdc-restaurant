@@ -23,6 +23,7 @@ export const RETRY_BACKOFF_MINUTES = [5, 15, 45, 120] as const;
 export const REVIEW_DAY_WINDOW = { start: "09:00", end: "20:00" } as const;
 export const QUEUE_BACKLOG_ALERT_MINUTES_DEFAULT = 20;
 export const QUEUE_FAILED_24H_ALERT_DEFAULT = 10;
+export const QUEUE_SKIPPED_24H_ALERT_DEFAULT = 35;
 
 export function isReminderTemplate(template: string): boolean {
   return REMINDER_TEMPLATES.has(template);
@@ -102,4 +103,22 @@ export function failed24hAlertFromEnv(env: {
 }): number {
   const n = Number(env.NOTIFICATION_FAILED_24H_ALERT);
   return Number.isFinite(n) && n >= 0 ? n : QUEUE_FAILED_24H_ALERT_DEFAULT;
+}
+
+export function skipped24hAlertFromEnv(env: {
+  NOTIFICATION_SKIPPED_24H_ALERT?: string;
+}): number {
+  const n = Number(env.NOTIFICATION_SKIPPED_24H_ALERT);
+  return Number.isFinite(n) && n >= 0 ? n : QUEUE_SKIPPED_24H_ALERT_DEFAULT;
+}
+
+/** Normalise error_text into a coarse skip-reason bucket for ops. */
+export function classifySkipReason(errorText: string | null | undefined): string {
+  const t = (errorText ?? "").toLowerCase();
+  if (t.includes("past_start")) return "past_start";
+  if (t.includes("stale")) return "stale";
+  if (t.includes("suppress")) return "suppressed";
+  if (t.includes("cancel")) return "cancelled";
+  if (t.includes("quiet")) return "quiet_hours";
+  return t ? "other" : "unknown";
 }

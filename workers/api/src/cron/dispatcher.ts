@@ -4,6 +4,7 @@ import { dispatchDueNotifications } from "../notifications/dispatch";
 import { scheduleDueReviewRequests } from "../notifications/review-requests";
 import { expirePendingPayments } from "../plugins/service/db/payments";
 import { depositsEnabled } from "../capabilities";
+import { runRetentionAnonymisation } from "../plugins/service/db/retention";
 import { recordCronHeartbeat } from "./heartbeat";
 
 /**
@@ -23,11 +24,12 @@ export async function runScheduledJobs(env: Env): Promise<void> {
     dispatchDueNotifications(env, { limit: 50 })
   );
   await runStep("expireWaitlistNotifications", async () => {
-    // Phase 7 — no-op stub until waitlist expire lands on this fork
+    // Waitlist expire deferred — ENABLE_WAITLIST fail-closed for Fennel go-live.
   });
   await runStep("markNoShows", async () => {
     // Optional — skipped until console needs it
   });
+  await runStep("retentionAnonymisation", () => runRetentionAnonymisation(env));
   await runStep("cronHeartbeat", () => recordCronHeartbeat(env));
 }
 

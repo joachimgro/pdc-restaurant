@@ -110,8 +110,8 @@ export async function scheduleDueReviewRequests(
     const notificationId = crypto.randomUUID();
     const rawDue = new Date();
     const scheduledFor = deferToGuestSendWindow(rawDue, row.timezone, {
-      quietStart: "21:00",
-      quietEnd: "08:00",
+      quietStart: settings.quietHoursStart,
+      quietEnd: settings.quietHoursEnd,
       dayStart: REVIEW_DAY_WINDOW.start,
       dayEnd: REVIEW_DAY_WINDOW.end,
     }).toISOString();

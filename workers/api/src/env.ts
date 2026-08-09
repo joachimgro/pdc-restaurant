@@ -81,6 +81,7 @@ export interface Env {
   REMINDER_STALE_MINUTES?: string;
   NOTIFICATION_BACKLOG_ALERT_MINUTES?: string;
   NOTIFICATION_FAILED_24H_ALERT?: string;
+  NOTIFICATION_SKIPPED_24H_ALERT?: string;
   /** Optional KV namespace for per-org AI rate limiting (Phase 4) */
   RATE_LIMITS?: KVNamespace;
 }

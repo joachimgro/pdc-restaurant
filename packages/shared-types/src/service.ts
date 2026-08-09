@@ -123,6 +123,17 @@ export const VenueSettingsSchema = z.object({
   contactPhone: z.string().nullable(),
   contactEmail: z.string().nullable(),
   addressText: z.string().nullable(),
+  /** Online cap when table combinations can seat larger parties. */
+  maxPartyCombined: z.number().int().min(1).max(100),
+  reviewUrl: z.string().nullable(),
+  reviewRequestDelayHours: z.number().int().min(0).max(168),
+  /** Minutes past start time before an unattended booking flips to no_show. */
+  noShowGraceMin: z.number().int().min(0).max(180),
+  /** Reminder notifications due inside this venue-local window defer to the end. */
+  quietHoursStart: TimeStringSchema,
+  quietHoursEnd: TimeStringSchema,
+  /** Months to keep guest PII before cron anonymisation (default 24). */
+  retentionMonths: z.number().int().min(1).max(120),
 });
 export type VenueSettings = z.infer<typeof VenueSettingsSchema>;
 
@@ -374,6 +385,8 @@ export const ReservationStatusInputSchema = z.object({
 
 export const AssignTablesInputSchema = z.object({
   tableIds: z.array(z.string().min(1)).min(1),
+  /** Atomically exchange tables with this booking (same service date). */
+  swapWithReservationId: z.string().min(1).optional(),
 });
 
 export const ReservationEventSchema = z.object({
@@ -384,6 +397,72 @@ export const ReservationEventSchema = z.object({
   createdAt: z.string(),
 });
 export type ReservationEvent = z.infer<typeof ReservationEventSchema>;
+
+// ── Guest profiles ───────────────────────────────────────────────────────────
+
+export const RELIABILITY_CHIPS = ["good", "watch", "risk"] as const;
+export type ReliabilityChip = (typeof RELIABILITY_CHIPS)[number];
+
+export const GuestProfileSchema = z.object({
+  contactId: z.string().min(1),
+  vip: z.boolean(),
+  allergies: z.string().nullable(),
+  dietary: z.string().nullable(),
+  seatingPreference: z.string().nullable(),
+  notes: z.string().nullable(),
+  visitCount: z.number().int(),
+  noShowCount: z.number().int(),
+  cancelCount: z.number().int(),
+  lifetimeCovers: z.number().int(),
+  reliabilityScore: z.number().int().min(0).max(100),
+  reliabilityChip: z.enum(RELIABILITY_CHIPS),
+  lastVisitAt: z.string().nullable(),
+  firstVisitAt: z.string().nullable(),
+  marketingOptIn: z.boolean(),
+  marketingOptInAt: z.string().nullable(),
+  blocked: z.boolean(),
+  blockedReason: z.string().nullable(),
+  updatedAt: z.string(),
+});
+export type GuestProfile = z.infer<typeof GuestProfileSchema>;
+
+export const GuestProfilePatchSchema = z
+  .object({
+    vip: z.boolean(),
+    allergies: z.string().max(500).nullable(),
+    dietary: z.string().max(500).nullable(),
+    seatingPreference: z.string().max(200).nullable(),
+    notes: z.string().max(2000).nullable(),
+    blocked: z.boolean(),
+    blockedReason: z.string().max(500).nullable(),
+  })
+  .partial();
+export type GuestProfilePatch = z.infer<typeof GuestProfilePatchSchema>;
+
+// ── Payments (deposits) ──────────────────────────────────────────────────────
+
+export const PAYMENT_STATUSES = [
+  "requires_action",
+  "saved",
+  "authorized",
+  "succeeded",
+  "failed",
+  "refunded",
+  "cancelled",
+] as const;
+export type PaymentStatus = (typeof PAYMENT_STATUSES)[number];
+
+export const PaymentSummarySchema = z.object({
+  id: z.string().min(1),
+  reservationId: z.string().nullable(),
+  status: z.enum(PAYMENT_STATUSES),
+  amountPence: z.number().int(),
+  currency: z.string(),
+  checkoutUrl: z.string().nullable(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+export type PaymentSummary = z.infer<typeof PaymentSummarySchema>;
 
 // ── Error envelope for /service/* and /book/* (spec §14) ─────────────────────
 

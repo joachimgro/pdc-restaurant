@@ -1,7 +1,9 @@
 import type { Env } from "../env";
 import {
   backlogAlertMinutesFromEnv,
+  classifySkipReason,
   failed24hAlertFromEnv,
+  skipped24hAlertFromEnv,
 } from "./policy";
 
 export type NotificationQueueStats = {
@@ -10,11 +12,15 @@ export type NotificationQueueStats = {
   oldestDueAgeMinutes: number | null;
   oldestDueScheduledFor: string | null;
   failedLast24h: number;
+  skippedLast24h: number;
+  skippedByReason: Record<string, number>;
   alert: {
     backlogOverdue: boolean;
     failedSpike: boolean;
+    skipSpike: boolean;
     backlogThresholdMinutes: number;
     failedThreshold: number;
+    skippedThreshold: number;
   };
 };
 
@@ -64,6 +70,33 @@ export async function getNotificationQueueStats(
     .bind(env.ORGANIZATION_ID)
     .first<{ n: number }>();
 
+  const skipped = await env.DB.prepare(
+    `SELECT COUNT(*) AS n
+     FROM notifications
+     WHERE organization_id = ?
+       AND status = 'skipped'
+       AND updated_at >= datetime('now', '-24 hours')`
+  )
+    .bind(env.ORGANIZATION_ID)
+    .first<{ n: number }>();
+
+  const { results: skipRows } = await env.DB.prepare(
+    `SELECT COALESCE(error_text, '') AS error_text, COUNT(*) AS n
+     FROM notifications
+     WHERE organization_id = ?
+       AND status = 'skipped'
+       AND updated_at >= datetime('now', '-24 hours')
+     GROUP BY error_text`
+  )
+    .bind(env.ORGANIZATION_ID)
+    .all<{ error_text: string; n: number }>();
+
+  const skippedByReason: Record<string, number> = {};
+  for (const row of skipRows ?? []) {
+    const reason = classifySkipReason(row.error_text);
+    skippedByReason[reason] = (skippedByReason[reason] ?? 0) + row.n;
+  }
+
   const oldest = backlog?.oldest ?? null;
   let oldestDueAgeMinutes: number | null = null;
   if (oldest) {
@@ -75,8 +108,10 @@ export async function getNotificationQueueStats(
 
   const backlogThresholdMinutes = backlogAlertMinutesFromEnv(env);
   const failedThreshold = failed24hAlertFromEnv(env);
+  const skippedThreshold = skipped24hAlertFromEnv(env);
   const backlogDueNow = backlog?.n ?? 0;
   const failedLast24h = failed?.n ?? 0;
+  const skippedLast24h = skipped?.n ?? 0;
 
   return {
     counts,
@@ -84,13 +119,17 @@ export async function getNotificationQueueStats(
     oldestDueAgeMinutes,
     oldestDueScheduledFor: oldest,
     failedLast24h,
+    skippedLast24h,
+    skippedByReason,
     alert: {
       backlogOverdue:
         oldestDueAgeMinutes != null &&
         oldestDueAgeMinutes > backlogThresholdMinutes,
       failedSpike: failedLast24h > failedThreshold,
+      skipSpike: skippedLast24h > skippedThreshold,
       backlogThresholdMinutes,
       failedThreshold,
+      skippedThreshold,
     },
   };
 }

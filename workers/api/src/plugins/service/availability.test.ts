@@ -42,6 +42,13 @@ function settings(overrides: Partial<VenueSettings> = {}): VenueSettings {
     contactPhone: null,
     contactEmail: null,
     addressText: null,
+    maxPartyCombined: 12,
+    reviewUrl: null,
+    reviewRequestDelayHours: 4,
+    noShowGraceMin: 15,
+    quietHoursStart: "21:00",
+    quietHoursEnd: "08:00",
+    retentionMonths: 24,
     ...overrides,
   };
 }
@@ -274,7 +281,7 @@ describe("party bounds", () => {
         channel: "online",
         partySize: 12,
         tables: [table("1", 2, 20)],
-        settings: settings({ maxPartyOnline: 8 }),
+        settings: settings({ maxPartyOnline: 8, maxPartyCombined: 8 }),
       })
     );
     expect(slots.every((s) => !s.available && s.reason === "party_too_large")).toBe(true);

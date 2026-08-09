@@ -1,14 +1,24 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import {
+  fetchCapabilities,
+  type Capabilities,
+} from "@/lib/api/capabilities";
+import { CalendarView } from "./CalendarView";
 import { HeaderStrip } from "./HeaderStrip";
 import { NewBookingPanel } from "./NewBookingPanel";
 import { PacingRibbon } from "./PacingRibbon";
 import { ReservationDrawer } from "./ReservationDrawer";
 import { ReservationList } from "./ReservationList";
 import { ServiceCanvas } from "./ServiceCanvas";
-import { TimelineView } from "./TimelineView";
+import { WaitlistPanel } from "./WaitlistPanel";
 import { formatHHMM, parseHHMM } from "./status";
+import {
+  consoleViewFromParam,
+  serviceConsoleViewUrl,
+} from "../console-view";
 import {
   useServiceConsole,
   type ConsoleView,
@@ -18,13 +28,16 @@ import "./console.css";
 /** How often the live clock advances. Statuses turn over on the minute. */
 const TICK_MS = 30_000;
 
-const VIEWS: { id: ConsoleView; label: string }[] = [
+const ALL_VIEWS: { id: ConsoleView; label: string }[] = [
   { id: "today", label: "Today" },
+  { id: "waitlist", label: "Waitlist" },
   { id: "floor", label: "Floor" },
-  { id: "timeline", label: "Timeline" },
+  { id: "calendar", label: "Calendar" },
 ];
 
 export function ConsoleWorkspace() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const status = useServiceConsole((s) => s.status);
   const error = useServiceConsole((s) => s.error);
   const view = useServiceConsole((s) => s.view);
@@ -35,8 +48,38 @@ export function ConsoleWorkspace() {
   const toasts = useServiceConsole((s) => s.toasts);
   const dismissToast = useServiceConsole((s) => s.dismissToast);
   const selectedId = useServiceConsole((s) => s.selectedId);
+  const select = useServiceConsole((s) => s.select);
 
   const [booking, setBooking] = useState(false);
+  const [caps, setCaps] = useState<Capabilities | null>(null);
+
+  useEffect(() => {
+    void fetchCapabilities()
+      .then(setCaps)
+      .catch(() => setCaps(null));
+  }, []);
+
+  const views = useMemo(
+    () =>
+      ALL_VIEWS.filter((v) => (v.id === "waitlist" ? caps?.waitlist === true : true)),
+    [caps]
+  );
+
+  useEffect(() => {
+    const fromUrl = consoleViewFromParam(
+      searchParams.get("view"),
+      searchParams.get("tab")
+    );
+    if (fromUrl === "waitlist" && caps && !caps.waitlist) {
+      setView("today");
+      return;
+    }
+    if (fromUrl) setView(fromUrl);
+  }, [searchParams, setView, caps]);
+
+  useEffect(() => {
+    if (view === "waitlist" && caps && !caps.waitlist) setView("today");
+  }, [view, caps, setView]);
 
   useEffect(() => {
     if (useServiceConsole.getState().status === "idle") void load();
@@ -67,40 +110,56 @@ export function ConsoleWorkspace() {
 
   return (
     <div className={`sc-root sc-view-${view}${selectedId ? " has-selection" : ""}`}>
-      <HeaderStrip />
+      <div className="sc-panel sc-panel-header">
+        <HeaderStrip />
+      </div>
 
-      <nav className="sc-tabs" role="tablist" aria-label="Service views">
-        {VIEWS.map((v) => (
+      <div className="sc-panel sc-panel-nav">
+        <nav className="sc-tabs" role="tablist" aria-label="Service views">
+          <div className="sc-tabs-segment">
+            {views.map((v) => (
+              <button
+                key={v.id}
+                type="button"
+                role="tab"
+                aria-selected={view === v.id}
+                className={`sc-tab${view === v.id ? " is-active" : ""}`}
+                onClick={() => {
+                  select(null);
+                  setView(v.id);
+                  router.replace(serviceConsoleViewUrl(v.id), { scroll: false });
+                }}
+              >
+                {v.label}
+              </button>
+            ))}
+          </div>
           <button
-            key={v.id}
             type="button"
-            role="tab"
-            aria-selected={view === v.id}
-            className={`sc-tab${view === v.id ? " is-active" : ""}`}
-            onClick={() => setView(v.id)}
+            className="sc-action sc-action-primary sc-new-booking"
+            onClick={() => setBooking(true)}
           >
-            {v.label}
+            New booking
           </button>
-        ))}
-        <button
-          type="button"
-          className="sc-action sc-action-primary sc-new-booking"
-          onClick={() => setBooking(true)}
-        >
-          New booking
-        </button>
-      </nav>
-
-      <PacingRibbon />
+        </nav>
+        {view !== "calendar" && view !== "waitlist" && !selectedId && (
+          <PacingRibbon />
+        )}
+      </div>
 
       <div className="sc-body">
-        <main className="sc-main">
-          {view === "today" && <ReservationList />}
-          {view === "floor" && <FloorPane />}
-          {view === "timeline" && <TimelineView />}
+        <main className="sc-panel sc-panel-main sc-main">
+          {selectedId ? (
+            <ReservationDrawer />
+          ) : (
+            <>
+              {view === "today" && <ReservationList />}
+              {view === "waitlist" && caps?.waitlist === true && <WaitlistPanel />}
+              {view === "floor" && <FloorPane />}
+              {view === "calendar" && <CalendarView />}
+            </>
+          )}
         </main>
-
-        <ReservationDrawer />
       </div>
 
       {booking && (

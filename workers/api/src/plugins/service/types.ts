@@ -26,6 +26,13 @@ export type VenueSettingsRow = {
   contact_phone: string | null;
   contact_email: string | null;
   address_text: string | null;
+  max_party_combined?: number;
+  review_url?: string | null;
+  review_request_delay_hours?: number;
+  no_show_grace_min?: number;
+  quiet_hours_start?: string;
+  quiet_hours_end?: string;
+  retention_months?: number;
 };
 
 export type RoomRow = {
