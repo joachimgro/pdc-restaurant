@@ -1,37 +1,34 @@
-# Venue onboarding checklist (≤30 minutes)
+# Venue onboarding checklist
 
-**Status:** see git. Timed against staging on 2026-08-09: ~18 minutes with resources already created.
+**Status:** live kitchen still carries the **demo seed** (`the-test-kitchen`, 3 rooms / 28 tables) until Fennel answers `FENNEL-VENUE-QUESTIONNAIRE.md` and a **new** venue is created. Verifying seed data is **not** Fennel onboarding.
 
-## Prerequisites (once per Cloudflare account)
+Honest timing (2026-08-09):
 
-- Wrangler logged in
-- Resend domain verified for booking From-address
-- Turnstile site + secret for the booking origin
+| Activity | Time |
+|----------|------|
+| Confirm seed already present (rooms/tables/periods) | ~2 min — **not** Fennel go-live |
+| Real Fennel onboarding (after questionnaire filled) | expect **25–45 min** first time: create location + settings, enter rooms/tables/combos, periods, turn/pacing, brand, smoke book |
 
-## Checklist
+## Prerequisites
 
-1. **Create infra** (5 min) — D1, KV `RATE_LIMITS`, queue + DLQ, Vectorize index. Paste IDs into a venue wrangler file (copy `wrangler.staging.toml`).
-2. **Flags** (1 min) — pilot posture: `ENABLE_SERVICE=true`, `ENABLE_KITCHEN=false`, `ENABLE_DEPOSITS=false`, `ENABLE_WAITLIST=false`, `ENABLE_BOOKING_SMS=false`, `ENABLE_DEMO_TOOLS=false`.
-3. **Secrets** (2 min) — `RESEND_API_KEY`, `TURNSTILE_SECRET_KEY`, `ADMIN_SEED_SECRET`.
-4. **Migrate + deploy** (3 min)
-   ```bash
-   cd workers/api
-   wrangler d1 migrations apply <db-name> --remote -c wrangler.<venue>.toml
-   wrangler deploy -c wrangler.<venue>.toml
-   curl -sS https://<worker>/health   # expect ok:true
-   ```
-5. **Floor + service** (5 min)
-   ```bash
-   node scripts/seed-venue-demo.mjs --config=workers/api/wrangler.<venue>.toml
-   ```
-   Or staff console: put floor plan, service periods, turn rules, quiet hours, `no_show_grace_min`, `retentionMonths`.
-6. **Invite staff** (3 min) — magic-link invite via `/auth` team invite (staff session required after first admin seed if used).
-7. **Booking page live** (2 min) — point `GUEST_BOOKING_ORIGIN` / web app at the Worker; confirm `GET /book/<slug>/venue` returns 200.
-8. **Smoke** (2 min) — one hold+reserve with Turnstile; confirmation email arrives.
+- Wrangler logged in; Worker + D1 already exist for this stamp
+- Resend + Turnstile + Telnyx secrets set (`TELNYX_WEBHOOK_PUBLIC_KEY` required for STOP)
+- `ENABLE_DEMO_TOOLS=false` on live
+- Questionnaire completed: `docs/ops/FENNEL-VENUE-QUESTIONNAIRE.md`
+
+## Checklist (real venue)
+
+1. **Create a new location + settings** — do **not** rename `the-test-kitchen`. New `booking_slug`, timezone, quiet hours, retention, contact, brand JSON.
+2. **Floor** — rooms, tables, combinations matching Fennel’s plan.
+3. **Service** — periods, turn rules, pacing for their service pattern.
+4. **Leave seed** as a test target (`the-test-kitchen`) unless Fennel asks it deleted.
+5. **Smoke** — `GET /book/<slug>/venue` 200; availability matches periods/turns; one hold+reserve with Turnstile; confirmation email/SMS.
+6. **STOP** — follow `docs/ops/STOP-LIVE-PROOF.md` with a real phone.
+7. Record elapsed wall-clock in the go-live note (not the seed verify time).
 
 ## Done when
 
-- `/health` green
-- Staff can open the day view
-- Guest can book online with Turnstile
-- Confirmation email lands
+- Booking URL is Fennel’s slug with Fennel’s floor and hours
+- `/health` green on the SHA you deployed
+- STOP proven on a real handset
+- Seed venue is either kept as test or explicitly deleted — never mistaken for Fennel
