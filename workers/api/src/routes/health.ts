@@ -75,6 +75,26 @@ export async function handleHealth(
     checks.cron_heartbeat = { ok: false, details: String(e) };
   }
 
+  // Deploy drift: optional EXPECTED_GIT_SHA (set in wrangler vars after stamp).
+  // Always surface running sha + schema so curl vs git rev-parse is trivial.
+  const expectedSha = env.EXPECTED_GIT_SHA?.trim();
+  if (expectedSha) {
+    checks.deploy_sha = {
+      ok: GIT_SHA === expectedSha || GIT_SHA.startsWith(expectedSha),
+      details: `running=${GIT_SHA} expected=${expectedSha}`,
+    };
+  } else {
+    checks.deploy_sha = {
+      ok: true,
+      details: `running=${GIT_SHA} (set EXPECTED_GIT_SHA var to pin)`,
+    };
+  }
+
+  checks.schema_pin = {
+    ok: checks.schema?.ok ?? false,
+    details: `d1=${checks.schema?.details ?? "n/a"} worker_expected=${EXPECTED_SCHEMA_VERSION}`,
+  };
+
   let notificationQueue: Awaited<
     ReturnType<typeof getNotificationQueueStats>
   > | null = null;

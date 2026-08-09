@@ -82,6 +82,11 @@ export interface Env {
   NOTIFICATION_BACKLOG_ALERT_MINUTES?: string;
   NOTIFICATION_FAILED_24H_ALERT?: string;
   NOTIFICATION_SKIPPED_24H_ALERT?: string;
+  /**
+   * Optional pin: when set, /health deploy_sha fails if build-info GIT_SHA
+   * does not match (exact or prefix). Set to the short SHA you just pushed.
+   */
+  EXPECTED_GIT_SHA?: string;
   /** Optional KV namespace for per-org AI rate limiting (Phase 4) */
   RATE_LIMITS?: KVNamespace;
 }
