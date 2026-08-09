@@ -1,5 +1,11 @@
 import type { Env } from "../env";
 import { deferIfQuietHours } from "../lib/venue-time";
+import {
+  appendGuestMessage,
+  notificationLabel,
+  upsertGuestThread,
+} from "../plugins/service/db/guest-threads";
+import { emitGuestContactUpdated } from "../plugins/service/db/guest-contact-events";
 
 export type NotificationChannel = "email" | "sms";
 export type NotificationTemplate =
@@ -7,7 +13,8 @@ export type NotificationTemplate =
   | "reservation_reminder"
   | "reservation_reminder_sms"
   | "reservation_changed"
-  | "reservation_cancelled";
+  | "reservation_cancelled"
+  | "review_request";
 
 export type ScheduleNotificationParams = {
   locationId: string;
@@ -108,11 +115,13 @@ export type BookingNotifyContext = {
   addressText: string | null;
   contactPhone: string | null;
   brand: Record<string, unknown> | null;
+  quietHoursStart?: string;
+  quietHoursEnd?: string;
 };
 
 /**
  * Schedule confirmation (due now) + reminders at reserve/modify time.
- * Reminder SMS respects quiet hours.
+ * Reminder email + SMS both respect quiet hours.
  */
 export async function scheduleBookingNotifications(
   env: Env,
@@ -134,14 +143,43 @@ export async function scheduleBookingNotifications(
     brand: ctx.brand,
   };
 
+  const thread = await upsertGuestThread(env, {
+    locationId: ctx.locationId,
+    reservationId: ctx.reservationId,
+    guestName: ctx.guestName,
+    guestEmail: ctx.guestEmail,
+    guestPhone: ctx.guestPhone,
+  });
+
+  let linkedAny = false;
+
+  async function scheduleAndLink(
+    params: Omit<ScheduleNotificationParams, "locationId" | "reservationId">
+  ): Promise<void> {
+    const result = await scheduleNotification(env, {
+      locationId: ctx.locationId,
+      reservationId: ctx.reservationId,
+      ...params,
+    });
+    if (!result.inserted) return;
+    linkedAny = true;
+    const label = notificationLabel(params.template, params.channel);
+    await appendGuestMessage(env, {
+      threadId: thread.id,
+      direction: "system",
+      channel: params.channel,
+      body: label,
+      notificationId: result.id,
+      status: "scheduled",
+    });
+  }
+
   if (opts.includeConfirmations) {
     const template =
       opts.kind === "changed" ? "reservation_changed" : "reservation_confirmed";
 
     if (ctx.guestEmail) {
-      await scheduleNotification(env, {
-        locationId: ctx.locationId,
-        reservationId: ctx.reservationId,
+      await scheduleAndLink({
         channel: "email",
         template,
         toAddress: ctx.guestEmail,
@@ -150,9 +188,7 @@ export async function scheduleBookingNotifications(
       });
     }
     if (bookingSmsEnabled(env) && ctx.guestPhone) {
-      await scheduleNotification(env, {
-        locationId: ctx.locationId,
-        reservationId: ctx.reservationId,
+      await scheduleAndLink({
         channel: "sms",
         template,
         toAddress: ctx.guestPhone,
@@ -162,17 +198,20 @@ export async function scheduleBookingNotifications(
     }
   }
 
-  const emailReminderAt = new Date(startsAt.getTime() - 24 * 60 * 60 * 1000);
+  const quietHours = { start: ctx.quietHoursStart, end: ctx.quietHoursEnd };
+
+  let emailReminderAt = new Date(startsAt.getTime() - 24 * 60 * 60 * 1000);
   if (ctx.guestEmail && emailReminderAt.getTime() > now.getTime()) {
-    await scheduleNotification(env, {
-      locationId: ctx.locationId,
-      reservationId: ctx.reservationId,
-      channel: "email",
-      template: "reservation_reminder",
-      toAddress: ctx.guestEmail,
-      scheduledFor: emailReminderAt,
-      payload,
-    });
+    emailReminderAt = deferIfQuietHours(emailReminderAt, ctx.timezone, quietHours);
+    if (emailReminderAt.getTime() > now.getTime()) {
+      await scheduleAndLink({
+        channel: "email",
+        template: "reservation_reminder",
+        toAddress: ctx.guestEmail,
+        scheduledFor: emailReminderAt,
+        payload,
+      });
+    }
   }
 
   let smsReminderAt = new Date(startsAt.getTime() - 3 * 60 * 60 * 1000);
@@ -181,11 +220,9 @@ export async function scheduleBookingNotifications(
     ctx.guestPhone &&
     smsReminderAt.getTime() > now.getTime()
   ) {
-    smsReminderAt = deferIfQuietHours(smsReminderAt, ctx.timezone);
+    smsReminderAt = deferIfQuietHours(smsReminderAt, ctx.timezone, quietHours);
     if (smsReminderAt.getTime() > now.getTime()) {
-      await scheduleNotification(env, {
-        locationId: ctx.locationId,
-        reservationId: ctx.reservationId,
+      await scheduleAndLink({
         channel: "sms",
         template: "reservation_reminder_sms",
         toAddress: ctx.guestPhone,
@@ -193,6 +230,14 @@ export async function scheduleBookingNotifications(
         payload,
       });
     }
+  }
+
+  if (linkedAny) {
+    await emitGuestContactUpdated(env, {
+      reservationId: ctx.reservationId,
+      serviceDate: ctx.serviceDate,
+      reason: "scheduled",
+    });
   }
 }
 

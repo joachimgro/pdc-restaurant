@@ -2,8 +2,11 @@ import type { Env } from "../env";
 
 /**
  * Cloudflare Turnstile siteverify.
- * Bypass only when secret unset AND ENABLE_DEMO_TOOLS=true.
- * Never bypass when the secret is set.
+ *
+ * - Secret unset + ENABLE_DEMO_TOOLS → allow (local/demo without keys)
+ * - ENABLE_DEMO_TOOLS + no token → allow (staff demos / local book UI)
+ * - Secret set + token present → always verify (never skip a submitted token)
+ * - Secret set + no token + demo off → TURNSTILE_REQUIRED
  */
 export async function verifyTurnstile(
   env: Env,
@@ -11,10 +14,11 @@ export async function verifyTurnstile(
   ip: string | null
 ): Promise<{ ok: true } | { ok: false; code: string; error: string }> {
   const secret = env.TURNSTILE_SECRET_KEY?.trim();
+  const demo = env.ENABLE_DEMO_TOOLS === "true";
+  const trimmed = token?.trim() || "";
+
   if (!secret) {
-    if (env.ENABLE_DEMO_TOOLS === "true") {
-      return { ok: true };
-    }
+    if (demo) return { ok: true };
     return {
       ok: false,
       code: "TURNSTILE_NOT_CONFIGURED",
@@ -22,7 +26,8 @@ export async function verifyTurnstile(
     };
   }
 
-  if (!token?.trim()) {
+  if (!trimmed) {
+    if (demo) return { ok: true };
     return {
       ok: false,
       code: "TURNSTILE_REQUIRED",
@@ -32,7 +37,7 @@ export async function verifyTurnstile(
 
   const form = new FormData();
   form.set("secret", secret);
-  form.set("response", token.trim());
+  form.set("response", trimmed);
   if (ip) form.set("remoteip", ip);
 
   const res = await fetch(

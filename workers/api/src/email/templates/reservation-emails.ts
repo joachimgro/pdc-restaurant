@@ -14,27 +14,25 @@ export type ReservationEmailPayload = {
 };
 
 function brandOf(p: ReservationEmailPayload): BrandBits {
-  const raw = (p.brand ?? {}) as Record<string, unknown>;
+  const b = p.brand as
+    | (BrandBits & { displayName?: string; name?: string })
+    | undefined
+    | null;
   const fromBrand =
-    typeof raw.venueName === "string"
-      ? raw.venueName
-      : typeof raw.displayName === "string"
-        ? raw.displayName
-        : typeof raw.name === "string"
-          ? raw.name
-          : "";
+    (typeof b?.venueName === "string" && b.venueName.trim()) ||
+    (typeof b?.displayName === "string" && b.displayName.trim()) ||
+    (typeof b?.name === "string" && b.name.trim()) ||
+    "";
   return {
-    venueName: fromBrand.trim() || p.venueName || "Restaurant",
-    accent: typeof raw.accent === "string" ? raw.accent : null,
-    logoUrl: typeof raw.logoUrl === "string" ? raw.logoUrl : null,
+    venueName: fromBrand || p.venueName || "Restaurant",
+    accent: typeof b?.accent === "string" ? b.accent : null,
+    logoUrl: typeof b?.logoUrl === "string" ? b.logoUrl : null,
     addressText:
-      (typeof raw.addressText === "string" ? raw.addressText : null) ??
       p.addressText ??
-      null,
+      (typeof b?.addressText === "string" ? b.addressText : null),
     contactPhone:
-      (typeof raw.contactPhone === "string" ? raw.contactPhone : null) ??
       p.contactPhone ??
-      null,
+      (typeof b?.contactPhone === "string" ? b.contactPhone : null),
   };
 }
 
@@ -133,5 +131,33 @@ export function reservationCancelledEmail(p: ReservationEmailPayload): {
   ]
     .filter(Boolean)
     .join("\n\n");
+  return { subject, html: emailLayout(brandOf(p), inner), text };
+}
+
+export type ReviewRequestEmailPayload = ReservationEmailPayload & {
+  reviewUrl: string;
+};
+
+export function reviewRequestEmail(p: ReviewRequestEmailPayload): {
+  subject: string;
+  html: string;
+  text: string;
+} {
+  const subject = `How was your visit to ${p.venueName}?`;
+  const inner = `
+    <p style="margin:0 0 16px;font-size:22px;font-weight:600;">Thanks for dining with us</p>
+    <p style="margin:0 0 12px;">Hi ${escapeHtml(p.guestName)},</p>
+    <p style="margin:0 0 16px;">We hope you enjoyed your table on <strong>${escapeHtml(p.serviceDate)}</strong> at <strong>${escapeHtml(p.startTime)}</strong>.</p>
+    <p style="margin:0 0 24px;text-align:center;">
+      <a href="${escapeHtml(p.reviewUrl)}" style="display:inline-block;background:#1a1a1a;color:#fff;text-decoration:none;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:14px;font-weight:600;padding:14px 28px;border-radius:4px;">Leave a review</a>
+    </p>
+    <p style="margin:0;color:#57534e;font-size:14px;">It only takes a moment — your feedback helps our team.</p>
+  `;
+  const text = [
+    `Thanks for visiting ${p.venueName}`,
+    `Hi ${p.guestName},`,
+    `We hope you enjoyed your visit on ${p.serviceDate} at ${p.startTime}.`,
+    `Leave a review: ${p.reviewUrl}`,
+  ].join("\n\n");
   return { subject, html: emailLayout(brandOf(p), inner), text };
 }

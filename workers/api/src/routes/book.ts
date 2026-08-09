@@ -13,6 +13,7 @@ import {
 } from "../lib/booking-rate-limit";
 import { verifyTurnstile } from "../lib/turnstile";
 import { guestBookingOrigin } from "../lib/venue-time";
+import { canonicalPhone } from "../db/phone-utils";
 import { dispatchDueNotifications } from "../notifications/dispatch";
 import {
   cancelScheduledNotifications,
@@ -43,11 +44,23 @@ import {
   findLocationByBookingSlug,
   getVenueSettings,
 } from "../plugins/service/db/venue";
+import { handleBookWaitlist } from "./waitlist";
+import { waitlistEnabled, depositsEnabled } from "../capabilities";
 import {
   addDays,
   localToUtcIso,
   venueLocalDate,
+  dayOfWeekForDate,
 } from "../plugins/service/time";
+import { createCheckoutSession } from "../payments/stripe";
+import {
+  createPayment,
+  depositAmountPence,
+  linkReservationPayment,
+  listDepositPolicies,
+  resolvePolicy,
+  updatePaymentCheckout,
+} from "../plugins/service/db/payments";
 
 const INVALID = Symbol("invalid-json");
 
@@ -163,6 +176,8 @@ async function notifyContextFromReservation(
     addressText: settings.addressText,
     contactPhone: settings.contactPhone,
     brand: settings.brand,
+    quietHoursStart: "21:00",
+    quietHoursEnd: "08:00",
   };
 }
 
@@ -191,6 +206,8 @@ export async function handleBookVenue(
     addressText: settings.addressText,
     brand: settings.brand,
     holdTtlSeconds: settings.holdTtlSeconds,
+    waitlistEnabled: waitlistEnabled(env) && settings.allowOnlineWaitlist,
+    bookingSmsEnabled: env.ENABLE_BOOKING_SMS === "true",
   });
 }
 
@@ -278,7 +295,7 @@ export async function handleBookAvailability(
     return bookError(request, env, 400, "INVALID_PARTY", "Invalid party size");
   }
 
-  if (partySize > settings.maxPartyOnline || partySize < settings.minPartyOnline) {
+  if (partySize > settings.maxPartyCombined || partySize < settings.minPartyOnline) {
     return jsonResponse(request, env, {
       serviceDate,
       partySize,
@@ -482,8 +499,11 @@ export async function handleBookReserve(
     );
   }
   const input = parsed.data;
+  const guestPhone = input.guestPhone?.trim()
+    ? canonicalPhone(input.guestPhone.trim())
+    : null;
 
-  if (!input.guestEmail && !input.guestPhone) {
+  if (!input.guestEmail && !guestPhone) {
     return bookError(
       request,
       env,
@@ -492,14 +512,24 @@ export async function handleBookReserve(
       "Please leave an email or a phone number"
     );
   }
-  // Email-only pilot: without SMS we need an address for the confirmation.
-  if (env.ENABLE_BOOKING_SMS !== "true" && !input.guestEmail) {
+  // Email confirmation is always required for the guest loop.
+  if (!input.guestEmail) {
     return bookError(
       request,
       env,
       400,
       "EMAIL_REQUIRED",
       "Please leave an email so we can send your confirmation"
+    );
+  }
+  // SMS reminders need a phone when booking SMS is on.
+  if (env.ENABLE_BOOKING_SMS === "true" && !guestPhone) {
+    return bookError(
+      request,
+      env,
+      400,
+      "PHONE_REQUIRED",
+      "Please leave a mobile number for text reminders"
     );
   }
 
@@ -550,7 +580,7 @@ export async function handleBookReserve(
   const { contactId } = await resolveGuest(env, {
     name: input.guestName,
     email: input.guestEmail ?? null,
-    phone: input.guestPhone ?? null,
+    phone: guestPhone,
   });
 
   const startsAtUtc = localToUtcIso(
@@ -560,6 +590,24 @@ export async function handleBookReserve(
   );
   const roomId = await roomForTables(env, tableIds);
   const reference = generateReference();
+
+  let depositPolicy: Awaited<ReturnType<typeof resolvePolicy>> = null;
+  let depositPence = 0;
+  if (depositsEnabled(env) && env.STRIPE_SECRET_KEY) {
+    const policies = await listDepositPolicies(env, locationId);
+    depositPolicy = resolvePolicy(policies, {
+      partySize: hold.party_size,
+      serviceDate: hold.service_date,
+      dayOfWeek: dayOfWeekForDate(hold.service_date),
+      servicePeriodId: null,
+    });
+    if (depositPolicy) {
+      depositPence = depositAmountPence(depositPolicy, hold.party_size);
+      if (depositPence <= 0) depositPolicy = null;
+    }
+  }
+
+  const initialStatus = depositPolicy ? "pending_payment" : "confirmed";
 
   const created = domainEventStatement(env.DB, env.ORGANIZATION_ID, {
     type: "reservation.created",
@@ -582,7 +630,7 @@ export async function handleBookReserve(
            starts_at_utc, service_period_id, room_id, status, source,
            assignment_locked, occasion, allergies, guest_notes, marketing_opt_in,
            idempotency_key
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, 'confirmed', 'online', 0, ?, ?, ?, ?, ?)`
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, 'online', 0, ?, ?, ?, ?, ?)`
       ).bind(
         reservationId,
         env.ORGANIZATION_ID,
@@ -590,7 +638,7 @@ export async function handleBookReserve(
         reference,
         contactId,
         input.guestName,
-        input.guestPhone ?? null,
+        guestPhone,
         input.guestEmail ?? null,
         hold.party_size,
         hold.service_date,
@@ -598,6 +646,7 @@ export async function handleBookReserve(
         hold.end_time,
         startsAtUtc,
         roomId,
+        initialStatus,
         input.occasion ?? null,
         input.allergies ?? null,
         input.guestNotes ?? null,
@@ -641,19 +690,51 @@ export async function handleBookReserve(
   }
 
   const { rawToken } = await mintGuestToken(env, { reservationId });
-  const ctx = await notifyContextFromReservation(
-    env,
-    locationId,
-    reservationId,
-    rawToken,
-    settings
-  );
-  await scheduleBookingNotifications(env, ctx, {
-    includeConfirmations: true,
-    kind: "created",
-  });
-  // Inline dispatch so confirmation does not wait for cron.
-  await dispatchDueNotifications(env, { limit: 10 });
+  const manageUrlValue = manageUrl(env, rawToken);
+
+  let checkoutUrl: string | null = null;
+  if (depositPolicy && depositPence > 0 && env.STRIPE_SECRET_KEY) {
+    const paymentId = crypto.randomUUID();
+    await createPayment(env, {
+      id: paymentId,
+      locationId,
+      reservationId,
+      contactId,
+      amountPence: depositPence,
+      policyId: depositPolicy.id,
+    });
+    await linkReservationPayment(env, reservationId, paymentId, depositPence);
+
+    const session = await createCheckoutSession({
+      secretKey: env.STRIPE_SECRET_KEY,
+      amountPence: depositPence,
+      currency: "gbp",
+      productName: `Deposit — ${reference}`,
+      successUrl: `${manageUrlValue}?paid=1`,
+      cancelUrl: manageUrlValue,
+      metadata: {
+        reservation_id: reservationId,
+        payment_id: paymentId,
+        organization_id: env.ORGANIZATION_ID,
+      },
+    });
+    await updatePaymentCheckout(env, paymentId, session.id, session.url);
+    checkoutUrl = session.url;
+  } else if (!depositPolicy) {
+    const ctx = await notifyContextFromReservation(
+      env,
+      locationId,
+      reservationId,
+      rawToken,
+      settings
+    );
+    await scheduleBookingNotifications(env, ctx, {
+      includeConfirmations: true,
+      kind: "created",
+    });
+    // Inline dispatch so confirmation does not wait for cron.
+    await dispatchDueNotifications(env, { limit: 10 });
+  }
 
   const reservation = await getReservation(env, reservationId);
   return jsonResponse(
@@ -662,7 +743,8 @@ export async function handleBookReserve(
     {
       reservation,
       manageToken: rawToken,
-      manageUrl: manageUrl(env, rawToken),
+      manageUrl: manageUrlValue,
+      checkoutUrl,
     },
     201
   );
@@ -783,9 +865,25 @@ export async function handleBookManageCancel(
   await cancelScheduledNotifications(env, existing.id);
   await revokeGuestTokensForReservation(env, existing.id);
 
+  if (existing.contactId) {
+    const { recalcGuestProfile } = await import(
+      "../plugins/service/db/guest-profiles"
+    );
+    await recalcGuestProfile(env, existing.contactId);
+  }
+
   const settings = await getVenueSettings(env, locationId);
   if (existing.guestEmail) {
-    await scheduleNotification(env, {
+    const { upsertGuestThread, appendGuestMessage, notificationLabel } =
+      await import("../plugins/service/db/guest-threads");
+    const thread = await upsertGuestThread(env, {
+      locationId,
+      reservationId: existing.id,
+      guestName: existing.guestName,
+      guestEmail: existing.guestEmail,
+      guestPhone: existing.guestPhone,
+    });
+    const scheduled = await scheduleNotification(env, {
       locationId,
       reservationId: existing.id,
       channel: "email",
@@ -805,6 +903,24 @@ export async function handleBookManageCancel(
         brand: settings.brand,
       },
     });
+    if (scheduled.inserted) {
+      await appendGuestMessage(env, {
+        threadId: thread.id,
+        direction: "system",
+        channel: "email",
+        body: notificationLabel("reservation_cancelled", "email"),
+        notificationId: scheduled.id,
+        status: "scheduled",
+      });
+      const { emitGuestContactUpdated } = await import(
+        "../plugins/service/db/guest-contact-events"
+      );
+      await emitGuestContactUpdated(env, {
+        reservationId: existing.id,
+        serviceDate: existing.serviceDate,
+        reason: "cancelled",
+      });
+    }
     await dispatchDueNotifications(env, { limit: 5 });
   }
 
@@ -990,6 +1106,11 @@ export async function handleBookRoutes(
       return handleBookManageModify(request, env, token);
     }
     return bookError(request, env, 405, "METHOD_NOT_ALLOWED", "Method not allowed");
+  }
+
+  const waitlistMatch = path.match(/^\/book\/([^/]+)\/waitlist$/);
+  if (waitlistMatch && request.method === "POST") {
+    return handleBookWaitlist(request, env, decodeURIComponent(waitlistMatch[1]));
   }
 
   const slugMatch = path.match(

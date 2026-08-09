@@ -3,6 +3,9 @@ import { HARD_LIMIT, getAiCallCount } from "../ai/rate-limit";
 import { EXPECTED_SCHEMA_VERSION } from "../meta";
 import { GIT_SHA, BUILT_AT } from "../build-info";
 import { jsonResponse } from "../cors";
+import { collectConfigIssues } from "../config-gate";
+import { readCronHeartbeat } from "../cron/heartbeat";
+import { getNotificationQueueStats } from "../notifications/queue-stats";
 
 export async function handleHealth(
   request: Request,
@@ -51,6 +54,51 @@ export async function handleHealth(
     }
   }
 
+  const configIssues = collectConfigIssues(env);
+  checks.config_gate = {
+    ok: configIssues.length === 0,
+    details:
+      configIssues.length === 0
+        ? "ok"
+        : configIssues.map((i) => `${i.code}: ${i.message}`).join("; "),
+  };
+
+  try {
+    const hb = await readCronHeartbeat(env);
+    checks.cron_heartbeat = {
+      ok: !hb.lastOkAt || !hb.stale,
+      details: hb.lastOkAt
+        ? `last_ok=${hb.lastOkAt}${hb.stale ? " (stale >15m)" : ""}`
+        : "no cron tick recorded yet",
+    };
+  } catch (e) {
+    checks.cron_heartbeat = { ok: false, details: String(e) };
+  }
+
+  let notificationQueue: Awaited<
+    ReturnType<typeof getNotificationQueueStats>
+  > | null = null;
+  try {
+    notificationQueue = await getNotificationQueueStats(env);
+    const alert = notificationQueue.alert;
+    checks.notification_queue = {
+      ok: !alert.backlogOverdue && !alert.failedSpike,
+      details: [
+        `backlog_due=${notificationQueue.backlogDueNow}`,
+        `oldest_due_age_min=${notificationQueue.oldestDueAgeMinutes ?? "n/a"}`,
+        `failed_24h=${notificationQueue.failedLast24h}`,
+        alert.backlogOverdue
+          ? `BACKLOG>${alert.backlogThresholdMinutes}m`
+          : null,
+        alert.failedSpike ? `FAILED_24H>${alert.failedThreshold}` : null,
+      ]
+        .filter(Boolean)
+        .join("; "),
+    };
+  } catch (e) {
+    checks.notification_queue = { ok: false, details: String(e) };
+  }
+
   const allOk = Object.values(checks).every((c) => c.ok);
 
   return jsonResponse(
@@ -65,6 +113,8 @@ export async function handleHealth(
         expectedSchema: EXPECTED_SCHEMA_VERSION,
       },
       checks,
+      notificationQueue: notificationQueue ?? undefined,
+      configIssues: configIssues.length ? configIssues : undefined,
     },
     allOk ? 200 : 503
   );

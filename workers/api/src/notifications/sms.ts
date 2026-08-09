@@ -1,4 +1,5 @@
 import type { Env } from "../env";
+import { canonicalPhone } from "../db/phone-utils";
 import { sendTelnyxSms } from "../telnyx/send";
 
 /** Booking SMS — Telnyx only. Never Twilio. */
@@ -7,7 +8,11 @@ export async function sendBookingSms(
   to: string,
   body: string
 ): Promise<{ id: string } | null> {
-  const result = await sendTelnyxSms(env, to, body);
+  const e164 = canonicalPhone(to);
+  if (!/^\+[1-9]\d{7,14}$/.test(e164)) {
+    throw new Error("The 'to' address should be a single valid number.");
+  }
+  const result = await sendTelnyxSms(env, e164, body);
   if (!result) return null;
   return { id: result.id };
 }
