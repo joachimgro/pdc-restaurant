@@ -11,7 +11,7 @@ workers_dev = true
 
 [vars]
 ORGANIZATION_ID = "restaurant"
-EXPECTED_GIT_SHA = "980e5d1"
+EXPECTED_GIT_SHA = "f25e1e6"
 
 CORS_ORIGIN = "http://localhost:3000,http://127.0.0.1:3000,https://kitchen.phiof.digital,https://pdc-restaurant-web.justphiof.workers.dev"
 

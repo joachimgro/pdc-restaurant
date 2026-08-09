@@ -130,6 +130,16 @@ export default {
     }
 
     try {
+      // Demo endpoints refuse closed before auth so operators can prove the
+      // flag without holding ADMIN_SEED_SECRET / a staff session.
+      if (
+        env.ENABLE_DEMO_TOOLS !== "true" &&
+        ((path === "/admin/seed" && request.method === "POST") ||
+          (path === "/leads/simulate" && request.method === "POST"))
+      ) {
+        return jsonResponse(request, env, { error: "Demo tools disabled" }, 403);
+      }
+
       // ── Public (unauthenticated) endpoints ──────────────────────────────
       // Everything else requires a valid staff session cookie. /auth/* routes
       // are listed as public because they manage their own session checks
