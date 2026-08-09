@@ -4,7 +4,7 @@ Scope: guest notifications + guest PII paths only. Deliberate choices after H1�
 
 | Area | Template (`pdc-template`) | Restaurant / Fennel (`pdc-restaurant`) | Reason |
 |------|---------------------------|----------------------------------------|--------|
-| Schema | 0047 (waitlist production) | **0045** (quiet hours + retention + SMS suppressions; no 0046/0047) | Go-live needs STOP/retention/quiet hours; waitlist production schema deferred with flag off |
+| Schema | 0047 (waitlist production) | **0046** (quiet hours + retention + SMS suppressions + contacts backfill; no 0047) | Go-live needs STOP/retention/quiet hours; waitlist production schema deferred with flag off |
 | SMS STOP | Real `sms_suppressions` + webhook keywords | **Same** (ported) | PECR obligation |
 | SMS body opt-out line | May lack “Reply STOP…” | **Includes** “Reply STOP to opt out.” | Clear UK transactional affordance on live fork |
 | Retention cron | Yes | **Yes** (ported) | GDPR retention |
