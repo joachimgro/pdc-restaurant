@@ -1,6 +1,6 @@
 import type { Env } from "../env";
 
-type Bucket = "avail" | "hold" | "reserve" | "write" | "venue_reserve";
+type Bucket = "avail" | "hold" | "reserve" | "write" | "venue_reserve" | "waitlist";
 
 const LIMITS: Record<Bucket, { max: number; windowSec: number }> = {
   avail: { max: 10, windowSec: 60 },
@@ -8,6 +8,7 @@ const LIMITS: Record<Bucket, { max: number; windowSec: number }> = {
   reserve: { max: 3, windowSec: 60 },
   write: { max: 20, windowSec: 3600 },
   venue_reserve: { max: 50, windowSec: 3600 },
+  waitlist: { max: 5, windowSec: 60 },
 };
 
 /**
