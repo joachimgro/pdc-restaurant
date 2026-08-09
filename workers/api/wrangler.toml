@@ -17,7 +17,7 @@ CORS_ORIGIN = "http://localhost:3000,http://127.0.0.1:3000,https://kitchen.phiof
 AI_EMBED_MODEL = "@cf/baai/bge-base-en-v1.5"
 
 # Demo tools on for pilot seeding / Turnstile bypass in local-style demos
-ENABLE_DEMO_TOOLS = "true"
+ENABLE_DEMO_TOOLS = "false"
 
 # Tuition / gym scheduling off — Service module owns the floor
 ENABLE_SIMPLE_SCHEDULING = "false"

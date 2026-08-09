@@ -1,0 +1,73 @@
+name: CI
+
+on:
+  push:
+    branches: [main, feat/**]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  api:
+    name: API typecheck + vitest (fresh D1 migrations)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.15.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+      - name: Install
+        run: pnpm install --frozen-lockfile
+      - name: Typecheck shared-types
+        run: pnpm --filter @lead-intake/shared-types exec tsc --noEmit
+      - name: Typecheck API
+        working-directory: workers/api
+        run: pnpm exec tsc --noEmit
+      - name: Vitest (applies full migration chain to fresh D1)
+        working-directory: workers/api
+        run: pnpm test
+      - name: Assert schema version constant matches migrations
+        working-directory: workers/api
+        run: pnpm exec vitest run src/meta.test.ts test/d1-harness.test.ts
+
+  migration-gate:
+    name: Broken migration fails harness
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.15.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Inject invalid SQL migration
+        run: |
+          cat > workers/api/migrations/9999_ci_broken.sql <<'SQL'
+          -- Deliberate CI probe: invalid SQL must fail applyD1Migrations.
+          THIS IS NOT VALID SQL;
+          SQL
+      - name: Expect vitest setup to fail
+        working-directory: workers/api
+        run: |
+          set +e
+          OUT=$(pnpm exec vitest run test/d1-harness.test.ts 2>&1)
+          CODE=$?
+          set -e
+          echo "$OUT"
+          if [ "$CODE" -eq 0 ]; then
+            echo "Expected migration apply to fail, but tests passed"
+            exit 1
+          fi
+          echo "Broken migration correctly failed the harness (exit $CODE)"

@@ -59,6 +59,7 @@ export function rowToReservation(
 ): Reservation {
   return {
     id: row.id,
+    locationId: row.location_id,
     reference: row.reference,
     contactId: row.contact_id,
     guestName: row.guest_name,
@@ -251,10 +252,19 @@ export async function conflictingTableIds(
   startTime: string,
   endTime: string,
   tableIds: string[],
-  excludeReservationId: string | null
+  excludeReservationId: string | null | string[]
 ): Promise<string[]> {
   if (tableIds.length === 0) return [];
   const tablePlaceholders = tableIds.map(() => "?").join(", ");
+  const excludeIds = Array.isArray(excludeReservationId)
+    ? excludeReservationId.filter(Boolean)
+    : excludeReservationId
+      ? [excludeReservationId]
+      : [];
+  const excludeClause =
+    excludeIds.length > 0
+      ? `AND r.id NOT IN (${excludeIds.map(() => "?").join(", ")})`
+      : "";
 
   const { results } = await env.DB.prepare(
     `SELECT DISTINCT rt.table_id
@@ -265,7 +275,7 @@ export async function conflictingTableIds(
        AND r.status IN (${statusPlaceholders})
        AND rt.table_id IN (${tablePlaceholders})
        AND NOT (r.end_time <= ? OR r.start_time >= ?)
-       AND (? IS NULL OR r.id != ?)`
+       ${excludeClause}`
   )
     .bind(
       locationId,
@@ -275,8 +285,7 @@ export async function conflictingTableIds(
       ...tableIds,
       startTime,
       endTime,
-      excludeReservationId,
-      excludeReservationId
+      ...excludeIds
     )
     .all<{ table_id: string }>();
 

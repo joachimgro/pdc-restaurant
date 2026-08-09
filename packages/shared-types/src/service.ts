@@ -297,6 +297,7 @@ export const ReservationSourceSchema = z.enum(RESERVATION_SOURCES);
 
 export const ReservationSchema = z.object({
   id: z.string().min(1),
+  locationId: z.string().min(1),
   reference: z.string().min(1),
   contactId: z.string().nullable(),
   guestName: z.string().min(1).max(120),

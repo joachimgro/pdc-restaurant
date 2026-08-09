@@ -15,6 +15,11 @@ export const DomainEventTypeSchema = z.enum([
   "reservation.updated",
   "reservation.status_changed",
   "reservation.assigned",
+  "waitlist.joined",
+  "waitlist.notified",
+  "waitlist.converted",
+  "waitlist.promoted",
+  "waitlist.expired",
 ]);
 export type DomainEventType = z.infer<typeof DomainEventTypeSchema>;
 
@@ -134,6 +139,57 @@ export const ReservationAssignedEventSchema = baseEvent.extend({
     serviceDate: z.string(),
     tableIds: z.array(z.string()),
     assignmentLocked: z.boolean(),
+    swappedWith: z.string().optional(),
+  }),
+});
+
+export const WaitlistJoinedEventSchema = baseEvent.extend({
+  type: z.literal("waitlist.joined"),
+  payload: z.object({
+    waitlistEntryId: z.string(),
+    locationId: z.string(),
+    serviceDate: z.string(),
+    kind: z.string(),
+    source: z.string().optional(),
+  }),
+});
+
+export const WaitlistNotifiedEventSchema = baseEvent.extend({
+  type: z.literal("waitlist.notified"),
+  payload: z.object({
+    waitlistEntryId: z.string(),
+    locationId: z.string().optional(),
+    serviceDate: z.string().optional(),
+  }),
+});
+
+export const WaitlistConvertedEventSchema = baseEvent.extend({
+  type: z.literal("waitlist.converted"),
+  payload: z.object({
+    waitlistEntryId: z.string(),
+    reservationId: z.string(),
+    locationId: z.string(),
+    serviceDate: z.string(),
+  }),
+});
+
+export const WaitlistPromotedEventSchema = baseEvent.extend({
+  type: z.literal("waitlist.promoted"),
+  payload: z.object({
+    waitlistEntryId: z.string(),
+    locationId: z.string(),
+    serviceDate: z.string(),
+    startTime: z.string().optional(),
+    partySize: z.number().optional(),
+  }),
+});
+
+export const WaitlistExpiredEventSchema = baseEvent.extend({
+  type: z.literal("waitlist.expired"),
+  payload: z.object({
+    waitlistEntryId: z.string(),
+    locationId: z.string(),
+    serviceDate: z.string(),
   }),
 });
 
@@ -151,6 +207,11 @@ export const DomainEventSchema = z.discriminatedUnion("type", [
   ReservationUpdatedEventSchema,
   ReservationStatusChangedEventSchema,
   ReservationAssignedEventSchema,
+  WaitlistJoinedEventSchema,
+  WaitlistNotifiedEventSchema,
+  WaitlistConvertedEventSchema,
+  WaitlistPromotedEventSchema,
+  WaitlistExpiredEventSchema,
 ]);
 export type DomainEvent = z.infer<typeof DomainEventSchema>;
 
