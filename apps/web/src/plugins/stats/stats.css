@@ -1,0 +1,27 @@
+/* Stats rail workspace — full-bleed analytics surface */
+
+.st-root {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+  padding: 10px;
+  box-sizing: border-box;
+  background: var(--bg-app);
+  color: var(--text-hi);
+  overflow: auto;
+}
+
+.st-panel {
+  flex: 1;
+  min-height: 0;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-panel, 16px);
+  box-shadow: var(--shadow-sm, none);
+  overflow: auto;
+}
+
+.st-panel .sc-stats {
+  max-width: 720px;
+}

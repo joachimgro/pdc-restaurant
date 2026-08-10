@@ -6,6 +6,11 @@ import {
   upsertGuestThread,
 } from "../plugins/service/db/guest-threads";
 import { emitGuestContactUpdated } from "../plugins/service/db/guest-contact-events";
+import {
+  SMS_EARLIEST_LOCAL,
+  SMS_QUIET_START_DEFAULT,
+  SMS_REMINDER_HOURS_BEFORE,
+} from "./policy";
 
 export type NotificationChannel = "email" | "sms";
 export type NotificationTemplate =
@@ -214,13 +219,20 @@ export async function scheduleBookingNotifications(
     }
   }
 
-  let smsReminderAt = new Date(startsAt.getTime() - 3 * 60 * 60 * 1000);
+  // SMS at T−4h so dinner covers land mid-afternoon, not in one 08:00 pile.
+  // Early slots (T−4h before 07:00 local) defer to 07:00 — not the email 08:00.
+  let smsReminderAt = new Date(
+    startsAt.getTime() - SMS_REMINDER_HOURS_BEFORE * 60 * 60 * 1000
+  );
   if (
     bookingSmsEnabled(env) &&
     ctx.guestPhone &&
     smsReminderAt.getTime() > now.getTime()
   ) {
-    smsReminderAt = deferIfQuietHours(smsReminderAt, ctx.timezone, quietHours);
+    smsReminderAt = deferIfQuietHours(smsReminderAt, ctx.timezone, {
+      start: ctx.quietHoursStart ?? SMS_QUIET_START_DEFAULT,
+      end: SMS_EARLIEST_LOCAL,
+    });
     if (smsReminderAt.getTime() > now.getTime()) {
       await scheduleAndLink({
         channel: "sms",

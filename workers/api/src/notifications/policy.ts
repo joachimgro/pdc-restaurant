@@ -25,6 +25,16 @@ export const QUEUE_BACKLOG_ALERT_MINUTES_DEFAULT = 20;
 export const QUEUE_FAILED_24H_ALERT_DEFAULT = 10;
 export const QUEUE_SKIPPED_24H_ALERT_DEFAULT = 35;
 
+/** SMS reminder lead time before starts_at_utc (spreads sends across the day). */
+export const SMS_REMINDER_HOURS_BEFORE = 4;
+/**
+ * Earliest local time an SMS reminder may fire. T−4h times before this
+ * (early breakfast/lunch) defer to 07:00 instead of bunching at 08:00.
+ */
+export const SMS_EARLIEST_LOCAL = "07:00";
+/** SMS quiet-hours start (same evening cutoff as email by default). */
+export const SMS_QUIET_START_DEFAULT = "21:00";
+
 export function isReminderTemplate(template: string): boolean {
   return REMINDER_TEMPLATES.has(template);
 }

@@ -1,0 +1,32 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "pdc-restaurant-web",
+  "account_id": "e83effb8e12473dcd697e82d4e3d9d7b",
+  "main": ".open-next/worker.js",
+  "compatibility_date": "2025-06-01",
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  "workers_dev": true,
+  "preview_urls": true,
+  "assets": {
+    "directory": ".open-next/assets",
+    "binding": "ASSETS"
+  },
+  "services": [
+    {
+      "binding": "WORKER_SELF_REFERENCE",
+      "service": "pdc-restaurant-web"
+    }
+  ],
+  "routes": [
+    {
+      "pattern": "kitchen.phiof.digital",
+      "custom_domain": true
+    }
+  ],
+  "vars": {
+    "NEXTJS_ENV": "production"
+  },
+  "observability": {
+    "enabled": true
+  }
+}

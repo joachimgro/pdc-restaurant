@@ -13,12 +13,17 @@ import { ProfileOnboarding } from "./ProfileOnboarding";
 import { LeadsPanel } from "./LeadsPanel/LeadsPanel";
 import { ConversationPanel } from "./ConversationPanel/ConversationPanel";
 import { ProfilePanel } from "./ProfilePanel/ProfilePanel";
+import { GuestsPanel } from "./GuestsPanel/GuestsPanel";
+import { GuestConversationPanel } from "./GuestsPanel/GuestConversationPanel";
 import { SettingsWorkspace } from "./SettingsWorkspace";
 import {
   type AppSection,
   parseAppSection,
   parseSettingsArea,
+  consoleViewFromParam,
 } from "./app-section";
+
+type InboxMode = "leads" | "guests";
 
 export function InboxPage() {
   const router = useRouter();
@@ -30,6 +35,10 @@ export function InboxPage() {
   const [authChecked, setAuthChecked] = useState(false);
   const [staffUser, setStaffUser] = useState<StaffUser | null>(null);
   const [section, setSection] = useState<AppSection>("inbox");
+  const [inboxMode, setInboxMode] = useState<InboxMode>("leads");
+  const [activeGuestThreadId, setActiveGuestThreadId] = useState<string | null>(
+    null
+  );
   const settingsArea =
     parseSettingsArea(searchParams.get("tab")) ??
     (searchParams.get("view") === "admin" ? "demo" : undefined);
@@ -48,21 +57,39 @@ export function InboxPage() {
   useEffect(() => {
     const fromUrl = parseAppSection(searchParams.get("view"));
     if (fromUrl) setSection(fromUrl);
+    if (searchParams.get("inbox") === "guests") {
+      setInboxMode("guests");
+    }
+    const consoleView = consoleViewFromParam(
+      searchParams.get("view"),
+      searchParams.get("tab")
+    );
+    if (consoleView) {
+      void import("@/plugins/service/store/service-console-store").then(
+        ({ useServiceConsole }) => {
+          useServiceConsole.getState().setView(consoleView);
+        }
+      );
+    }
   }, [searchParams]);
 
   useEffect(() => {
     let cancelled = false;
     void (async () => {
-      const user = await fetchAuthMe();
-      if (cancelled) return;
-      if (!user) {
-        router.replace("/login");
-        return;
-      }
-      setStaffUser(user);
-      setAuthChecked(true);
-      if (!user.needsProfile) {
-        await init();
+      try {
+        const user = await fetchAuthMe();
+        if (cancelled) return;
+        if (!user) {
+          router.replace("/login");
+          return;
+        }
+        setStaffUser(user);
+        setAuthChecked(true);
+        if (!user.needsProfile) {
+          await init();
+        }
+      } catch {
+        if (!cancelled) router.replace("/login?error=session");
       }
     })();
     return () => {
@@ -89,11 +116,11 @@ export function InboxPage() {
     );
   }
 
-  if (loading && section === "inbox") {
+  if (loading && section === "inbox" && inboxMode === "leads") {
     return <div className="loading-screen">Loading leads…</div>;
   }
 
-  if (error && section === "inbox") {
+  if (error && section === "inbox" && inboxMode === "leads") {
     return (
       <div className="loading-screen">
         <p>{error}</p>
@@ -105,16 +132,10 @@ export function InboxPage() {
     );
   }
 
-  const showProfile = section === "inbox" && profileOpen;
+  const showProfile = section === "inbox" && profileOpen && inboxMode === "leads";
 
   return (
     <>
-      <div className="desktop-only-banner">
-        <p>
-          Lead Intake is designed for desktop (1200px+). Please use a larger
-          screen for the demo.
-        </p>
-      </div>
       <div className="inbox-shell">
         <div
           className={`inbox-app${showProfile ? "" : " inbox-app--profile-hidden"}`}
@@ -126,13 +147,55 @@ export function InboxPage() {
           />
           {section === "inbox" && (
             <>
-              <LeadsPanel />
-              <ConversationPanel
-                profileOpen={profileOpen}
-                onToggleProfile={() => setProfileOpen((v) => !v)}
-              />
-              {showProfile && (
-                <ProfilePanel onClose={() => setProfileOpen(false)} />
+              <div className="inbox-mode-col">
+                <div className="inbox-mode-tabs" role="tablist" aria-label="Inbox">
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={inboxMode === "leads"}
+                    className={`inbox-mode-tab${inboxMode === "leads" ? " is-active" : ""}`}
+                    onClick={() => {
+                      setInboxMode("leads");
+                      router.replace("/inbox", { scroll: false });
+                    }}
+                  >
+                    Leads
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={inboxMode === "guests"}
+                    className={`inbox-mode-tab${inboxMode === "guests" ? " is-active" : ""}`}
+                    onClick={() => {
+                      setInboxMode("guests");
+                      setProfileOpen(false);
+                      router.replace("/inbox?inbox=guests", { scroll: false });
+                    }}
+                  >
+                    Guests
+                  </button>
+                </div>
+                {inboxMode === "leads" ? (
+                  <LeadsPanel />
+                ) : (
+                  <GuestsPanel
+                    activeThreadId={activeGuestThreadId}
+                    onSelect={setActiveGuestThreadId}
+                  />
+                )}
+              </div>
+              {inboxMode === "leads" ? (
+                <>
+                  <ConversationPanel
+                    profileOpen={profileOpen}
+                    onToggleProfile={() => setProfileOpen((v) => !v)}
+                  />
+                  {showProfile && (
+                    <ProfilePanel onClose={() => setProfileOpen(false)} />
+                  )}
+                </>
+              ) : (
+                <GuestConversationPanel threadId={activeGuestThreadId} />
               )}
             </>
           )}

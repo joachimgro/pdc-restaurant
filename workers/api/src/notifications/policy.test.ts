@@ -1,10 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
   MAX_ATTEMPTS,
+  SMS_EARLIEST_LOCAL,
+  SMS_QUIET_START_DEFAULT,
+  SMS_REMINDER_HOURS_BEFORE,
   nextRetryScheduledFor,
   reminderSkipReason,
 } from "./policy";
-import { deferToGuestSendWindow } from "../lib/venue-time";
+import { deferIfQuietHours, deferToGuestSendWindow } from "../lib/venue-time";
 import { localToUtc } from "../plugins/service/time";
 
 describe("reminderSkipReason", () => {
@@ -50,15 +53,40 @@ describe("reminderSkipReason", () => {
         "reservation_reminder_sms",
         now,
         "2026-08-15T17:50:00.000Z",
-        "2026-08-15T20:00:00.000Z",
-        30
+        "2026-08-15T20:00:00.000Z"
       )
     ).toBeNull();
   });
 });
 
+describe("SMS reminder lead + earliest send", () => {
+  it("is four hours before start", () => {
+    expect(SMS_REMINDER_HOURS_BEFORE).toBe(4);
+  });
+
+  it("defers a 05:00 T−4h slot to 07:00 local (not 08:00)", () => {
+    const fiveAm = localToUtc("2026-08-16", "05:00", "Europe/London");
+    const deferred = deferIfQuietHours(fiveAm, "Europe/London", {
+      start: SMS_QUIET_START_DEFAULT,
+      end: SMS_EARLIEST_LOCAL,
+    });
+    expect(deferred.toISOString()).toBe(
+      localToUtc("2026-08-16", "07:00", "Europe/London").toISOString()
+    );
+  });
+
+  it("leaves a 15:00 dinner T−4h alone (no morning pile-up)", () => {
+    const threePm = localToUtc("2026-08-16", "15:00", "Europe/London");
+    const deferred = deferIfQuietHours(threePm, "Europe/London", {
+      start: SMS_QUIET_START_DEFAULT,
+      end: SMS_EARLIEST_LOCAL,
+    });
+    expect(deferred.toISOString()).toBe(threePm.toISOString());
+  });
+});
+
 describe("nextRetryScheduledFor", () => {
-  it("backs off then exhausts at MAX_ATTEMPTS", () => {
+  it("backs off 5 / 15 / 45 / 120 minutes then null", () => {
     const now = new Date("2026-08-15T12:00:00.000Z");
     const jitter = () => 0;
     expect(nextRetryScheduledFor(1, now, jitter)?.toISOString()).toBe(

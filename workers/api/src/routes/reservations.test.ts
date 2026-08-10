@@ -507,7 +507,10 @@ describe("POST /service/reservations/:id/status", () => {
       token,
       body: JSON.stringify({ action: "seat" }),
     });
-    expect(((await seated.json()) as { status: string }).status).toBe("seated");
+    expect(
+      ((await seated.json()) as { reservation: { status: string } }).reservation
+        .status
+    ).toBe("seated");
 
     const finished = await call(`/service/reservations/${id}/status`, {
       method: "POST",
@@ -515,11 +518,10 @@ describe("POST /service/reservations/:id/status", () => {
       body: JSON.stringify({ action: "finish" }),
     });
     const body = (await finished.json()) as {
-      status: string;
-      finishedAt: string;
+      reservation: { status: string; finishedAt: string };
     };
-    expect(body.status).toBe("finished");
-    expect(body.finishedAt).toBeTruthy();
+    expect(body.reservation.status).toBe("finished");
+    expect(body.reservation.finishedAt).toBeTruthy();
   });
 
   it("rejects an impossible transition", async () => {
@@ -588,11 +590,10 @@ describe("POST /service/reservations/:id/status", () => {
       body: JSON.stringify({ action: "reinstate" }),
     });
     const body = (await res.json()) as {
-      status: string;
-      cancelledAt: string | null;
+      reservation: { status: string; cancelledAt: string | null };
     };
-    expect(body.status).toBe("confirmed");
-    expect(body.cancelledAt).toBeNull();
+    expect(body.reservation.status).toBe("confirmed");
+    expect(body.reservation.cancelledAt).toBeNull();
   });
 
   it("emits reservation.status_changed with both ends of the transition", async () => {

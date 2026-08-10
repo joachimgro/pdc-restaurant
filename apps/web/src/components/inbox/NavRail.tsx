@@ -1,11 +1,21 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 import type { StaffUser } from "@lead-intake/shared-types";
 import { logoutAuth } from "@/lib/api/client";
+import { fetchCapabilities, type Capabilities } from "@/lib/api/capabilities";
 import { getPlugins } from "@/plugins/registry";
 import type { AppSection } from "./app-section";
 import { IconBook, IconInbox, IconSearch, IconSettings } from "./icons";
+
+function pluginVisible(pluginId: string, caps: Capabilities | null): boolean {
+  if (pluginId === "kitchen") return caps?.kitchen === true;
+  if (pluginId === "stats") {
+    return caps?.service === true || caps?.reservations === true;
+  }
+  return true;
+}
 
 export function NavRail({
   staffUser,
@@ -17,9 +27,14 @@ export function NavRail({
   onSectionChange: (section: AppSection) => void;
 }) {
   const router = useRouter();
-  const allPlugins = getPlugins();
+  const [caps, setCaps] = useState<Capabilities | null>(null);
+  const allPlugins = getPlugins().filter((p) => pluginVisible(p.id, caps));
   const topPlugins = allPlugins.filter((p) => p.railPosition === "top");
   const bottomPlugins = allPlugins.filter((p) => p.railPosition === "bottom");
+
+  useEffect(() => {
+    void fetchCapabilities().then(setCaps);
+  }, []);
 
   async function handleLogout() {
     await logoutAuth();

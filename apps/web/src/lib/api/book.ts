@@ -1,4 +1,4 @@
-import { API_URL } from "./client";
+import { getApiUrl } from "@/lib/api/client";
 
 async function bookFetch<T>(
   path: string,
@@ -9,7 +9,7 @@ async function bookFetch<T>(
   if (init?.idempotencyKey) {
     headers.set("Idempotency-Key", init.idempotencyKey);
   }
-  const res = await fetch(`${API_URL}${path}`, {
+  const res = await fetch(`${getApiUrl()}${path}`, {
     ...init,
     headers,
   });
@@ -42,6 +42,9 @@ export type BookVenue = {
   addressText: string | null;
   brand: Record<string, unknown> | null;
   holdTtlSeconds: number;
+  waitlistEnabled?: boolean;
+  bookingSmsEnabled?: boolean;
+  maxAdvanceDays?: number;
 };
 
 export function getBookVenue(slug: string) {
@@ -112,9 +115,11 @@ export function postBookReserve(
       startTime: string;
       partySize: number;
       guestName: string;
+      status?: string;
     };
     manageToken: string | null;
     manageUrl: string | null;
+    checkoutUrl?: string | null;
   }>(`/book/${encodeURIComponent(slug)}/reserve`, {
     method: "POST",
     body: JSON.stringify(body),
@@ -146,5 +151,28 @@ export function postManageCancel(token: string, reason?: string) {
   return bookFetch(`/book/manage/${encodeURIComponent(token)}/cancel`, {
     method: "POST",
     body: JSON.stringify({ reason: reason ?? null }),
+  });
+}
+
+export function postBookWaitlist(
+  slug: string,
+  body: {
+    guestName: string;
+    partySize: number;
+    serviceDate: string;
+    guestEmail?: string;
+    guestPhone?: string;
+    kind?: "date_waitlist" | "walk_in";
+    requestedFrom?: string;
+    requestedTo?: string;
+    turnstileToken?: string;
+  }
+) {
+  return bookFetch<{
+    entry: { id: string; position?: number };
+    message: string;
+  }>(`/book/${encodeURIComponent(slug)}/waitlist`, {
+    method: "POST",
+    body: JSON.stringify(body),
   });
 }

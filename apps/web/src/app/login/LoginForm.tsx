@@ -1,12 +1,10 @@
 "use client";
 
-import { useSearchParams } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { requestMagicLink } from "@/lib/api/client";
 
 export function LoginForm() {
-  const searchParams = useSearchParams();
-  const errorParam = searchParams.get("error");
+  const [errorParam, setErrorParam] = useState<string | null>(null);
   const [email, setEmail] = useState("");
   const [status, setStatus] = useState<
     "idle" | "sending" | "sent" | "error"
@@ -14,11 +12,18 @@ export function LoginForm() {
   const [message, setMessage] = useState<string | null>(null);
   const [devLink, setDevLink] = useState<string | null>(null);
 
+  // Avoid useSearchParams() Suspense — on iPad a stalled RSC/hydration left
+  // the page stuck on the "Loading…" fallback forever.
+  useEffect(() => {
+    setErrorParam(new URLSearchParams(window.location.search).get("error"));
+  }, []);
+
   const errorMessages: Record<string, string> = {
     missing_token: "Sign-in link was incomplete. Request a new one.",
     invalid_token: "That sign-in link has expired or was already used.",
     not_invited:
       "This email is not on the team list yet. Ask your admin for an invite.",
+    session: "Your session could not be restored. Request a new sign-in link.",
   };
 
   async function handleSubmit(e: React.FormEvent) {
@@ -38,7 +43,12 @@ export function LoginForm() {
       }
     } catch (err) {
       setStatus("error");
-      setMessage(err instanceof Error ? err.message : "Could not send link");
+      const raw = err instanceof Error ? err.message : "Could not send link";
+      setMessage(
+        raw === "Load failed" || /failed to fetch/i.test(raw)
+          ? "Could not reach the server. Check your connection and try again."
+          : raw
+      );
     }
   }
 

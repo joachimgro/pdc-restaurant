@@ -206,9 +206,15 @@ export function ServiceCanvas({ room }: { room: RoomMeta }) {
         const point = view.toCanvas(e.clientX, e.clientY);
         const target = point ? tableAtPoint(point.x, point.y) : null;
         if (target && target !== gesture.fromTableId) {
-          // Optimistic with rollback — the store puts the booking back and
-          // explains if the server rejects the move.
-          void reassign(gesture.reservationId, [target]);
+          const occupant = reservationAt(byTable.get(target) ?? [], atMinutes);
+          if (occupant && occupant.id !== gesture.reservationId) {
+            // Drop onto an occupied table → atomic swap (industry floor UX).
+            void reassign(gesture.reservationId, [target], {
+              swapWithReservationId: occupant.id,
+            });
+          } else {
+            void reassign(gesture.reservationId, [target]);
+          }
         }
         setDragging(null);
         gestureRef.current = { kind: "none" };

@@ -189,7 +189,8 @@ export function parseSessionCookie(request: Request): string | null {
 export function sessionCookieHeader(
   token: string,
   maxAgeSec: number,
-  secure = true
+  secure = true,
+  domain?: string
 ): string {
   const parts = [
     `${SESSION_COOKIE}=${token}`,
@@ -200,10 +201,16 @@ export function sessionCookieHeader(
     `Max-Age=${maxAgeSec}`,
   ];
   if (secure) parts.push("Secure");
+  // Share across kitchen.phiof.digital + api.kitchen.phiof.digital so the
+  // same-origin /api/backend proxy can forward the session cookie.
+  if (domain) parts.push(`Domain=${domain}`);
   return parts.join("; ");
 }
 
-export function clearSessionCookieHeader(secure = true): string {
+export function clearSessionCookieHeader(
+  secure = true,
+  domain?: string
+): string {
   const parts = [
     `${SESSION_COOKIE}=`,
     "Path=/",
@@ -212,5 +219,19 @@ export function clearSessionCookieHeader(secure = true): string {
     "Max-Age=0",
   ];
   if (secure) parts.push("Secure");
+  if (domain) parts.push(`Domain=${domain}`);
   return parts.join("; ");
+}
+
+/** Registrable Domain=.example.com from an https origin, else undefined. */
+export function cookieDomainFromWebOrigin(webOrigin: string): string | undefined {
+  try {
+    const host = new URL(webOrigin).hostname;
+    if (host === "localhost" || host === "127.0.0.1") return undefined;
+    const parts = host.split(".");
+    if (parts.length < 2) return undefined;
+    return `.${parts.slice(-2).join(".")}`;
+  } catch {
+    return undefined;
+  }
 }

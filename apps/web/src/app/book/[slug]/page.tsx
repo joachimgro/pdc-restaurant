@@ -1,19 +1,20 @@
 import { Suspense } from "react";
+import type { Metadata } from "next";
 import BookClient from "./BookClient";
-import "@/app/book/book.css";
+import "../book.css";
+
+export const metadata: Metadata = {
+  title: "Book a table · The Test Kitchen",
+  description: "Reserve a table online",
+};
 
 export default function Page() {
   return (
     <Suspense
       fallback={
-        <div className="book-page">
-          <main className="book-shell">
-            <div className="book-loading">
-              <div className="book-spinner" aria-hidden />
-              <p>Loading…</p>
-            </div>
-          </main>
-        </div>
+        <main className="book-shell">
+          <p className="book-muted">Loading…</p>
+        </main>
       }
     >
       <BookClient />

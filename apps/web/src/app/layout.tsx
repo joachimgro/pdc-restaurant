@@ -6,11 +6,12 @@ const jakarta = Plus_Jakarta_Sans({
   subsets: ["latin"],
   variable: "--font-jakarta",
   display: "swap",
+  weight: ["400", "500", "600", "700", "800"],
 });
 
 export const metadata: Metadata = {
   title: "The Test Kitchen",
-  description: "Book a table",
+  description: "Service console and online booking",
 };
 
 export default function RootLayout({
@@ -20,7 +21,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className={jakarta.variable}>
-      <body style={{ fontFamily: "var(--font)" }}>{children}</body>
+      <body>{children}</body>
     </html>
   );
 }

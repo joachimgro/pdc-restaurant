@@ -121,15 +121,17 @@ export function TimelineView() {
         newStart + duration,
         reservation.id
       );
-      if (clash) {
-        // Rejected with an explanation, never silently corrected.
+      const timeChanged = newStart !== parseHHMM(reservation.startTime);
+      const tableChanged = targetTable !== reservation.tableIds[0];
+
+      // Same-slot table swap is allowed; overlapping a different time is not.
+      if (clash && (timeChanged || !tableChanged)) {
         setRejection(
           `Table ${targetTable.replace(/^tbl-/, "")} already has ${clash.guestName} at ${clash.startTime}.`
         );
         return;
       }
 
-      const timeChanged = newStart !== parseHHMM(reservation.startTime);
       if (timeChanged) {
         const result = await patchReservation(reservation.id, {
           startTime: formatHHMM(newStart),
@@ -140,8 +142,14 @@ export function TimelineView() {
           return;
         }
       }
-      if (targetTable !== reservation.tableIds[0]) {
-        await useServiceConsole.getState().reassign(reservation.id, [targetTable]);
+      if (tableChanged) {
+        if (clash) {
+          await useServiceConsole.getState().reassign(reservation.id, [targetTable], {
+            swapWithReservationId: clash.id,
+          });
+        } else {
+          await useServiceConsole.getState().reassign(reservation.id, [targetTable]);
+        }
       }
       await load();
     },

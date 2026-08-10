@@ -1,14 +1,14 @@
+import { getApiUrl } from "@/lib/api/client";
 import {
   IntakeFormSchema,
   IntakeResponseSchema,
   type IntakeFormInput,
 } from "@lead-intake/shared-types";
-import { API_URL } from "./client";
 
 export async function submitIntakeForm(data: IntakeFormInput) {
   const payload = IntakeFormSchema.parse(data);
 
-  const res = await fetch(`${API_URL}/leads/intake`, {
+  const res = await fetch(`${getApiUrl()}/leads/intake`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
@@ -24,7 +24,7 @@ export async function submitIntakeForm(data: IntakeFormInput) {
 }
 
 export async function fetchLocations() {
-  const res = await fetch(`${API_URL}/locations`);
+  const res = await fetch(`${getApiUrl()}/locations`);
   if (!res.ok) throw new Error("Failed to load locations");
   const data = (await res.json()) as {
     locations: Array<{

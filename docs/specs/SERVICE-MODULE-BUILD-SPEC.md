@@ -43,15 +43,19 @@ A reservations and waitlist system for restaurants and bars, as installable modu
 - **Waitlist** — walk-in queue and date waitlist, SMS notify, one-tap convert to reservation
 - **Deposits and card-on-file** — Stripe, policy-driven, no-show protection
 - **Notifications** — Resend email + Telnyx SMS, scheduled reminders, guest replies
+- **Guest contact threads** — two-way email with guests (never creates leads)
 - **Stats** — covers, utilisation, no-show rate, waitlist conversion, source mix
+- **Kitchen tablet plugin** (separate `kitchen` plugin) — Submit / Chef / Ready boards
 
 ### Explicitly out of scope (do not build)
 
-- Table ordering, KDS, tabs, payments-at-table, menu management, stock, staff rotas
+- Printers / ESC-POS / hardware KDS (tablet boards only for kitchen v1)
+- Tabs, payments-at-table, stock, staff rotas
 - Multi-venue switching UI (data model supports it; UI does not ship)
 - Guest accounts with passwords
 - Marketing campaigns or bulk email
 - Anything in the tuition/Anthem demo path
+- Google Calendar / external calendar sync
 
 ### Design partners (real venues, week-one users)
 
@@ -72,10 +76,15 @@ A gastro pub with rooms, the GM at Australasia Manchester, and the owner of Fenn
 | `feat/reservations` | Migration 0036, availability engine, assignment engine, reservation CRUD | `service-core` |
 | `feat/service-console` | Manager today/floor/timeline console, `GET /service/day` | `reservations` — **merged to `main`** |
 | `feat/guest-loop` | **Phases 5+6 together:** public booking + confirmation/reminder notifications (one demoable closed loop) | **`main`** (console already merged — do not stack on `feat/service-console`) |
-| `feat/waitlist` | Migration 0038, waitlist queue, notify, convert | `guest-loop` |
-| `feat/payments` | Migration 0039, Stripe deposits and card-on-file | `guest-loop` |
-| `feat/service-stats` | Stats endpoints and workspace | `guest-loop`, `waitlist` |
-
+| `feat/guest-threads` | Migration **0038**, guest contact threads + Resend inbound + Guests inbox | `guest-loop` |
+| `feat/waitlist` | Migration **0039**, waitlist queue, notify, convert | `guest-threads` |
+| `feat/payments` | Migration **0040**, Stripe Checkout deposits | `guest-threads` |
+| `feat/guest-profiles` | Migration **0041**, VIP / reliability scores | `guest-threads` |
+| `feat/guest-moderation` | Migration **0042**, flag/mute guest threads | `guest-threads` |
+| `feat/kitchen` | Migration **0043**, kitchen tablet plugin (Submit / Chef / Ready) | `guest-threads` |
+| `feat/service-stats` | Stats endpoints and workspace | `guest-threads`, `waitlist` |
+| `feat/review-request` | Post-visit review email via notifications | `guest-threads` |
+| `feat/service-calendar-nav` | Day/week nav synced across Today / Floor / Calendar | `service-console` |
 Each branch merges to `pdc-template main` when its phase gate passes. `pdc-phiof` merges `upstream/main` after each.
 
 ### Working method
@@ -471,7 +480,11 @@ VALUES ('schema_version', '0037', datetime('now'));
 **`status`:** `scheduled` | `sending` | `sent` | `failed` | `cancelled` | `skipped`.  
 `sending` is the claim state for the dispatcher (see §11). `skipped` is used when send-time checks refuse delivery (e.g. reservation already cancelled).
 
-### `0038_waitlist.sql`
+### `0038_guest_threads.sql`
+
+Landed: `guest_threads` + `guest_messages` (reservation-linked contact; never creates leads). See `workers/api/migrations/0038_guest_threads.sql`.
+
+### `0039_waitlist.sql`
 
 ```sql
 CREATE TABLE IF NOT EXISTS waitlist_entries (
@@ -509,7 +522,7 @@ CREATE INDEX IF NOT EXISTS idx_waitlist_contact
   ON waitlist_entries(organization_id, contact_id);
 
 INSERT OR REPLACE INTO _meta (key, value, updated_at)
-VALUES ('schema_version', '0038', datetime('now'));
+VALUES ('schema_version', '0039', datetime('now'));
 ```
 
 **`kind`:** `walk_in` (here now, waiting for a table) | `date_waitlist` (wants a specific date that is full).
@@ -517,7 +530,7 @@ VALUES ('schema_version', '0038', datetime('now'));
 
 **Position is not stored.** It is computed as the row's rank within `(location_id, service_date, kind, status='waiting')` ordered by `priority ASC, joined_at ASC`. A stored position column goes stale on every insert and every removal and will be wrong within one service.
 
-### `0039_payments.sql`
+### `0040_payments.sql`
 
 ```sql
 CREATE TABLE IF NOT EXISTS deposit_policies (
@@ -583,7 +596,7 @@ CREATE TABLE IF NOT EXISTS payment_events (
 );
 
 INSERT OR REPLACE INTO _meta (key, value, updated_at)
-VALUES ('schema_version', '0039', datetime('now'));
+VALUES ('schema_version', '0040', datetime('now'));
 ```
 
 **`mode`:** `none` | `card_on_file` | `deposit_fixed` | `deposit_per_person`.
@@ -592,7 +605,7 @@ VALUES ('schema_version', '0039', datetime('now'));
 
 Amounts are integer pence. Never floats, never strings.
 
-### `0040_guest_profiles.sql`
+### `0041_guest_profiles.sql`
 
 ```sql
 CREATE TABLE IF NOT EXISTS guest_profiles (
@@ -619,10 +632,26 @@ CREATE INDEX IF NOT EXISTS idx_guest_profiles_vip
   ON guest_profiles(organization_id, vip) WHERE vip = 1;
 
 INSERT OR REPLACE INTO _meta (key, value, updated_at)
-VALUES ('schema_version', '0040', datetime('now'));
+VALUES ('schema_version', '0041', datetime('now'));
 ```
 
-Counters are maintained by `recalcGuestProfile(env, contactId)`, called on reservation status transitions to `finished`, `no_show`, and `cancelled`. It recomputes from `reservations` rather than incrementing, so a corrected status heals the counters.
+Counters are maintained by `recalcGuestProfile(env, contactId)`, called on reservation status transitions to `finished`, `no_show`, and `cancelled`. It recomputes from `reservations` rather than incrementing, so a corrected status heals the counters. Add `reliability_score` INTEGER (0–100) derived from visit/no-show ratio.
+
+### `0042_guest_moderation.sql`
+
+```sql
+ALTER TABLE guest_threads ADD COLUMN flagged_at TEXT;
+ALTER TABLE guest_threads ADD COLUMN flag_reason TEXT;
+ALTER TABLE guest_threads ADD COLUMN muted_at TEXT;
+ALTER TABLE guest_messages ADD COLUMN flagged INTEGER NOT NULL DEFAULT 0;
+
+INSERT OR REPLACE INTO _meta (key, value, updated_at)
+VALUES ('schema_version', '0042', datetime('now'));
+```
+
+### `0043_kitchen.sql`
+
+Kitchen tablet plugin tables: `menu_categories`, `menu_items`, `kitchen_tickets`, `kitchen_ticket_items`. See `workers/api/migrations/0043_kitchen.sql`.
 
 ### Migration hygiene
 

@@ -8,14 +8,35 @@ import {
 } from "@lead-intake/shared-types";
 import type { DomainEvent, Lead, StaffTeamMember, StaffUser } from "@lead-intake/shared-types";
 
-export const API_URL =
+/** Build-time upstream Worker URL (also used as the same-origin proxy target). */
+export const API_UPSTREAM =
   process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8787";
+
+/**
+ * Browser API base. On the live kitchen host, use `/api/pdc` so Safari/iPad
+ * never does a cross-origin credentialed fetch (which surfaces as "Load failed").
+ */
+export function getApiUrl(): string {
+  if (typeof window !== "undefined") {
+    const host = window.location.hostname;
+    if (
+      host === "kitchen.phiof.digital" ||
+      host === "pdc-restaurant-web.justphiof.workers.dev"
+    ) {
+      return `${window.location.origin}/api/pdc`;
+    }
+  }
+  return API_UPSTREAM;
+}
+
+/** @deprecated Prefer getApiUrl() — kept for call-site compatibility. */
+export const API_URL = API_UPSTREAM;
 
 export async function apiFetch<T>(
   path: string,
   init?: RequestInit
 ): Promise<T> {
-  const res = await fetch(`${API_URL}${path}`, {
+  const res = await fetch(`${getApiUrl()}${path}`, {
     cache: "no-store",
     credentials: "include",
     ...init,
@@ -34,20 +55,22 @@ export async function apiFetch<T>(
 }
 
 export async function fetchAuthMe(): Promise<StaffUser | null> {
-  const res = await fetch(`${API_URL}/auth/me`, {
-    cache: "no-store",
-    credentials: "include",
-    headers: { "Content-Type": "application/json" },
-  });
-  if (res.status === 401) return null;
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(
-      (err as { error?: string }).error ?? `API error ${res.status}`
-    );
+  try {
+    const res = await fetch(`${getApiUrl()}/auth/me`, {
+      cache: "no-store",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      // Safari/iPad can stall forever on a hung credentialed request.
+      signal: AbortSignal.timeout(12_000),
+    });
+    if (res.status === 401) return null;
+    if (!res.ok) return null;
+    const data = (await res.json()) as { user: unknown };
+    return StaffUserSchema.parse(data.user);
+  } catch {
+    // Network/CORS/parse failures must not leave the app stuck on "Loading…"
+    return null;
   }
-  const data = (await res.json()) as { user: unknown };
-  return StaffUserSchema.parse(data.user);
 }
 
 export async function requestMagicLink(
@@ -99,7 +122,7 @@ export async function fetchLead(id: string): Promise<Lead> {
 
 /** Returns null when the lead no longer exists (e.g. after delete). */
 export async function fetchLeadOrNull(id: string): Promise<Lead | null> {
-  const res = await fetch(`${API_URL}/leads/${encodeURIComponent(id)}`, {
+  const res = await fetch(`${getApiUrl()}/leads/${encodeURIComponent(id)}`, {
     cache: "no-store",
     credentials: "include",
     headers: { "Content-Type": "application/json" },
@@ -124,7 +147,7 @@ export async function selectLead(id: string): Promise<Lead> {
 /** Mark read and return lead; null if deleted. */
 export async function selectLeadOrNull(id: string): Promise<Lead | null> {
   const res = await fetch(
-    `${API_URL}/leads/${encodeURIComponent(id)}/select`,
+    `${getApiUrl()}/leads/${encodeURIComponent(id)}/select`,
     {
       method: "POST",
       cache: "no-store",
@@ -201,7 +224,7 @@ export function subscribeEvents(
   onEvent: (event: DomainEvent) => void,
   cursor: string | null = null
 ): () => void {
-  const url = new URL(`${API_URL}/events/stream`);
+  const url = new URL(`${getApiUrl()}/events/stream`);
   if (cursor) url.searchParams.set("cursor", cursor);
 
   const es = new EventSource(url.toString(), { withCredentials: true });

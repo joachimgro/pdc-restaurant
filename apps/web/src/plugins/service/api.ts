@@ -1,3 +1,4 @@
+import { getApiUrl } from "@/lib/api/client";
 import {
   FloorPlanSchema,
   validateFloorPlan,
@@ -7,10 +8,8 @@ import {
 import { docToFloorPlan } from "./normalise";
 import type { Doc, NormalisedIssue, SaveOutcome } from "./types";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8787";
-
 export async function fetchFloorPlan(): Promise<FloorPlan> {
-  const res = await fetch(`${API_URL}/service/floor-plan`, {
+  const res = await fetch(`${getApiUrl()}/service/floor-plan`, {
     cache: "no-store",
     credentials: "include",
   });
@@ -37,7 +36,7 @@ export async function saveFloorPlan(
 ): Promise<SaveOutcome & { plan?: FloorPlan }> {
   let res: Response;
   try {
-    res = await fetch(`${API_URL}/service/floor-plan`, {
+    res = await fetch(`${getApiUrl()}/service/floor-plan`, {
       method: "PUT",
       cache: "no-store",
       credentials: "include",

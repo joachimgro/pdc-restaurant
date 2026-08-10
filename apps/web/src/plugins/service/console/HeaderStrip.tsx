@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
+import { DateNavStrip } from "./DateNavStrip";
 import { occupies } from "./status";
 import {
   selectReservationList,
@@ -51,6 +52,7 @@ export function HeaderStrip() {
           value={serviceDate}
           onChange={(e) => void setDate(e.target.value)}
         />
+        <DateNavStrip />
       </div>
 
       <dl className="sc-metrics">

@@ -152,7 +152,11 @@ export function computeAvailability(
 
   const partyOutsideOnlineBounds =
     channel === "online" &&
-    (partySize < settings.minPartyOnline || partySize > settings.maxPartyOnline);
+    (partySize < settings.minPartyOnline ||
+      partySize > settings.maxPartyCombined);
+
+  const requiresCombination =
+    channel === "online" && partySize > settings.maxPartyOnline;
 
   // ── Indexes built once, before the slot loop ──────────────────────────────
   // This is what keeps the engine flat rather than N+1: every slot reads these
@@ -305,7 +309,10 @@ export function computeAvailability(
         reserveLargeTables: channel === "online",
       });
 
-      if (!assignment) {
+      if (
+        !assignment ||
+        (requiresCombination && !assignment.combinationId)
+      ) {
         slots.push(unavailable("no_table"));
         continue;
       }

@@ -1,7 +1,10 @@
+import { getApiUrl } from "@/lib/api/client";
 import {
   FloorPlanSchema,
   type FloorPlan,
+  type GuestProfile,
   type PacingRule,
+  type PaymentSummary,
   type Reservation,
   type ReservationEvent,
   type ReservationStatusAction,
@@ -9,8 +12,6 @@ import {
   type TurnTimeRule,
   type VenueSettings,
 } from "@lead-intake/shared-types";
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8787";
 
 export type ServiceDay = {
   serviceDate: string;
@@ -41,7 +42,7 @@ async function call<T>(
 ): Promise<ApiResult<T>> {
   let res: Response;
   try {
-    res = await fetch(`${API_URL}${path}`, {
+    res = await fetch(`${getApiUrl()}${path}`, {
       cache: "no-store",
       credentials: "include",
       ...init,
@@ -84,8 +85,25 @@ export async function fetchFloorPlan(): Promise<ApiResult<FloorPlan>> {
 
 export function fetchReservation(
   id: string
-): Promise<ApiResult<{ reservation: Reservation; events: ReservationEvent[] }>> {
+): Promise<
+  ApiResult<{
+    reservation: Reservation;
+    events: ReservationEvent[];
+    guestProfile?: GuestProfile | null;
+    payment?: PaymentSummary | null;
+  }>
+> {
   return call(`/service/reservations/${id}`);
+}
+
+export function patchGuestProfile(
+  reservationId: string,
+  patch: { vip?: boolean }
+): Promise<ApiResult<{ profile: GuestProfile }>> {
+  return call(`/service/reservations/${reservationId}/guest-profile`, {
+    method: "PATCH",
+    body: JSON.stringify(patch),
+  });
 }
 
 export type AvailabilitySlotDto = {
@@ -136,7 +154,13 @@ export function setReservationStatus(
   id: string,
   action: ReservationStatusAction,
   reason?: string
-): Promise<ApiResult<Reservation>> {
+): Promise<
+  ApiResult<{
+    reservation: Reservation;
+    guestProfile?: GuestProfile | null;
+    payment?: PaymentSummary | null;
+  }>
+> {
   return call(`/service/reservations/${id}/status`, {
     method: "POST",
     body: JSON.stringify({ action, reason: reason ?? null }),
@@ -145,10 +169,52 @@ export function setReservationStatus(
 
 export function assignReservationTables(
   id: string,
-  tableIds: string[]
+  tableIds: string[],
+  options?: { swapWithReservationId?: string }
 ): Promise<ApiResult<Reservation>> {
   return call(`/service/reservations/${id}/tables`, {
     method: "PUT",
-    body: JSON.stringify({ tableIds }),
+    body: JSON.stringify({
+      tableIds,
+      ...(options?.swapWithReservationId
+        ? { swapWithReservationId: options.swapWithReservationId }
+        : {}),
+    }),
   });
+}
+
+export type ServiceStats = {
+  from: string;
+  to: string;
+  locationId: string;
+  covers: number;
+  bookings: number;
+  finished: number;
+  cancelled: number;
+  noShows: number;
+  seatedNow: number;
+  noShowRate: number | null;
+  cancelRate: number | null;
+  avgTurnMinutes: number | null;
+  avgSeatLagMinutes: number | null;
+  avgDwellMinutes: number | null;
+  avgPartySize: number | null;
+  sourceMix: { source: string; count: number }[];
+  hourlyStarts: { hour: number; count: number; covers: number }[];
+  waitlistConversion: number | null;
+  waitlistTotal: number;
+  waitlistConverted: number;
+  kitchenTickets: number;
+  avgTicketMinutes: number | null;
+  ticketsOver15Min: number;
+};
+
+export function fetchServiceStats(
+  from: string,
+  to: string,
+  locationId?: string
+): Promise<ApiResult<ServiceStats>> {
+  const params = new URLSearchParams({ from, to });
+  if (locationId) params.set("locationId", locationId);
+  return call<ServiceStats>(`/service/stats?${params.toString()}`);
 }

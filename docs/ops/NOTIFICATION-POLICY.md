@@ -4,17 +4,20 @@
  * ## Reminder timing
  * - Confirmation email (+ SMS if ENABLE_BOOKING_SMS): due immediately at reserve
  *   (also flushed inline so it does not wait for cron).
- * - Reminder email: T−24h before `starts_at_utc`, then quiet-hours deferral.
- * - Reminder SMS: T−3h before `starts_at_utc`, then quiet-hours deferral.
- * - If T−24h / T−3h is already in the past at booking time, **no reminder is
+ * - Reminder email: T−24h before `starts_at_utc`, then quiet-hours deferral
+ *   (default release **08:00** local).
+ * - Reminder SMS: T−**4h** before `starts_at_utc`, then SMS quiet-hours deferral
+ *   with earliest send **07:00** local (so early-morning bookings do not text
+ *   at 05:00, and dinner bookings fire mid-afternoon instead of one 08:00 pile).
+ * - If T−24h / T−4h is already in the past at booking time, **no reminder is
  *   scheduled** (confirmation already covered the guest). There is no separate
  *   “minimum lead hours” flag beyond that.
  *
  * ## Quiet hours
- * Default venue-local **21:00–08:00**, stored on `venue_settings.quiet_hours_*`
- * (schema 0044+) and editable via venue settings. Applies to **email and SMS
- * reminders** and to **review request** scheduling. A due time inside the
- * window moves to the end of the window (usually 08:00).
+ * Default venue-local **21:00–08:00** for **email** (and reviews), stored on
+ * `venue_settings.quiet_hours_*`. **SMS reminders** use the same evening start
+ * but release at **07:00** (`SMS_EARLIEST_LOCAL`), not the email 08:00 end.
+ * A due time inside the window moves to the end of that window.
  *
  * ## Review requests
  * Cron schedules one email when `finished_at + review_request_delay_hours`

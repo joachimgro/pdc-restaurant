@@ -10,6 +10,7 @@ import {
 import {
   canRequestMagicLink,
   clearSessionCookieHeader,
+  cookieDomainFromWebOrigin,
   consumeMagicLinkToken,
   createMagicLinkToken,
   createSession,
@@ -123,12 +124,18 @@ export async function handleVerify(
   const sessionToken = await createSession(env, row.id);
   const maxAgeSec = Math.floor(SESSION_TTL_MS / 1000);
   const secure = new URL(request.url).protocol === "https:";
+  const cookieDomain = cookieDomainFromWebOrigin(webOrigin(env));
 
   return new Response(null, {
     status: 302,
     headers: {
       Location: `${webOrigin(env)}/inbox`,
-      "Set-Cookie": sessionCookieHeader(sessionToken, maxAgeSec, secure),
+      "Set-Cookie": sessionCookieHeader(
+        sessionToken,
+        maxAgeSec,
+        secure,
+        cookieDomain
+      ),
     },
   });
 }
@@ -140,12 +147,13 @@ export async function handleLogout(
   const raw = parseSessionCookie(request);
   if (raw) await deleteSession(env, raw);
   const secure = new URL(request.url).protocol === "https:";
+  const cookieDomain = cookieDomainFromWebOrigin(webOrigin(env));
 
   return new Response(JSON.stringify({ ok: true }), {
     status: 200,
     headers: corsHeaders(request, env, {
       "Content-Type": "application/json",
-      "Set-Cookie": clearSessionCookieHeader(secure),
+      "Set-Cookie": clearSessionCookieHeader(secure, cookieDomain),
     }),
   });
 }

@@ -465,10 +465,27 @@ export async function handleGetReservation(
     return serviceError(request, env, 404, "NOT_FOUND", "Reservation not found");
   }
 
-  return jsonResponse(request, env, {
+  const body: Record<string, unknown> = {
     reservation,
     events: await listReservationEvents(env, reservationId),
-  });
+  };
+
+  if (reservation.contactId) {
+    const { getOrCreateProfile } = await import(
+      "../plugins/service/db/guest-profiles"
+    );
+    body.guestProfile = await getOrCreateProfile(env, reservation.contactId);
+  }
+
+  const { depositsEnabled } = await import("../capabilities");
+  if (depositsEnabled(env)) {
+    const { getPaymentByReservation } = await import(
+      "../plugins/service/db/payments"
+    );
+    body.payment = await getPaymentByReservation(env, reservationId);
+  }
+
+  return jsonResponse(request, env, body);
 }
 
 // ── PATCH /service/reservations/:id ──────────────────────────────────────────
@@ -773,7 +790,39 @@ export async function handleReservationStatus(
     await cancelScheduledNotifications(env, reservationId);
   }
 
-  return jsonResponse(request, env, await getReservation(env, reservationId));
+  if (
+    existing.contactId &&
+    ["finish", "no_show", "cancel"].includes(parsed.data.action)
+  ) {
+    const { recalcGuestProfile } = await import(
+      "../plugins/service/db/guest-profiles"
+    );
+    await recalcGuestProfile(env, existing.contactId);
+  }
+
+  const responseBody: Record<string, unknown> = {
+    reservation: await getReservation(env, reservationId),
+  };
+
+  if (existing.contactId) {
+    const { getOrCreateProfile } = await import(
+      "../plugins/service/db/guest-profiles"
+    );
+    responseBody.guestProfile = await getOrCreateProfile(
+      env,
+      existing.contactId
+    );
+  }
+
+  const { depositsEnabled } = await import("../capabilities");
+  if (depositsEnabled(env)) {
+    const { getPaymentByReservation } = await import(
+      "../plugins/service/db/payments"
+    );
+    responseBody.payment = await getPaymentByReservation(env, reservationId);
+  }
+
+  return jsonResponse(request, env, responseBody);
 }
 
 // ── PUT /service/reservations/:id/tables ─────────────────────────────────────
@@ -811,7 +860,7 @@ export async function handleAssignTables(
       parsed.error.issues
     );
   }
-  const { tableIds } = parsed.data;
+  const { tableIds, swapWithReservationId } = parsed.data;
 
   const unknown = await unknownTableIds(env, locationId, tableIds);
   if (unknown.length > 0) {
@@ -823,6 +872,151 @@ export async function handleAssignTables(
       "Some tables do not belong to this venue",
       { tableIds: unknown }
     );
+  }
+
+  // Atomic swap: A takes B's tables (or the requested set), B takes A's.
+  if (swapWithReservationId) {
+    if (swapWithReservationId === reservationId) {
+      return serviceError(
+        request,
+        env,
+        400,
+        "INVALID_ASSIGNMENT",
+        "Cannot swap a booking with itself"
+      );
+    }
+    const other = await getReservation(env, swapWithReservationId);
+    if (!other || other.locationId !== locationId) {
+      return serviceError(request, env, 404, "NOT_FOUND", "Swap target not found");
+    }
+    if (other.serviceDate !== existing.serviceDate) {
+      return serviceError(
+        request,
+        env,
+        400,
+        "INVALID_ASSIGNMENT",
+        "Can only swap bookings on the same service date"
+      );
+    }
+
+    const aNew = tableIds.length > 0 ? tableIds : other.tableIds;
+    const bNew = existing.tableIds;
+    if (aNew.length === 0) {
+      return serviceError(
+        request,
+        env,
+        400,
+        "INVALID_ASSIGNMENT",
+        "Swap target has no tables"
+      );
+    }
+
+    const excludeBoth = [reservationId, swapWithReservationId];
+    const conflictsA = await conflictingTableIds(
+      env,
+      locationId,
+      existing.serviceDate,
+      existing.startTime,
+      existing.endTime,
+      aNew,
+      excludeBoth
+    );
+    const conflictsB =
+      bNew.length === 0
+        ? []
+        : await conflictingTableIds(
+            env,
+            locationId,
+            other.serviceDate,
+            other.startTime,
+            other.endTime,
+            bNew,
+            excludeBoth
+          );
+    if (conflictsA.length > 0 || conflictsB.length > 0) {
+      return serviceError(
+        request,
+        env,
+        409,
+        "SLOT_TAKEN",
+        "Those tables are already booked for this window",
+        {
+          conflictingTableIds: [...new Set([...conflictsA, ...conflictsB])],
+          alternatives: [],
+        }
+      );
+    }
+
+    const actor = actorOf(session);
+    const statements = [
+      env.DB.prepare(
+        `DELETE FROM reservation_tables WHERE reservation_id IN (?, ?)`
+      ).bind(reservationId, swapWithReservationId),
+      ...aNew.map((tableId) =>
+        env.DB.prepare(
+          `INSERT INTO reservation_tables (reservation_id, table_id) VALUES (?, ?)`
+        ).bind(reservationId, tableId)
+      ),
+      ...bNew.map((tableId) =>
+        env.DB.prepare(
+          `INSERT INTO reservation_tables (reservation_id, table_id) VALUES (?, ?)`
+        ).bind(swapWithReservationId, tableId)
+      ),
+      env.DB.prepare(
+        `UPDATE reservations SET assignment_locked = 1, room_id = COALESCE(
+           (SELECT room_id FROM dining_tables WHERE id = ?), room_id
+         ), updated_at = datetime('now')
+         WHERE id = ? AND organization_id = ?`
+      ).bind(aNew[0], reservationId, env.ORGANIZATION_ID),
+      ...(bNew[0]
+        ? [
+            env.DB.prepare(
+              `UPDATE reservations SET assignment_locked = 1, room_id = COALESCE(
+                 (SELECT room_id FROM dining_tables WHERE id = ?), room_id
+               ), updated_at = datetime('now')
+               WHERE id = ? AND organization_id = ?`
+            ).bind(bNew[0], swapWithReservationId, env.ORGANIZATION_ID),
+          ]
+        : [
+            env.DB.prepare(
+              `UPDATE reservations SET assignment_locked = 1, updated_at = datetime('now')
+               WHERE id = ? AND organization_id = ?`
+            ).bind(swapWithReservationId, env.ORGANIZATION_ID),
+          ]),
+      reservationEventStatement(env, reservationId, "assigned", actor, {
+        tableIds: aNew,
+        previousTableIds: existing.tableIds,
+        swappedWith: swapWithReservationId,
+      }),
+      reservationEventStatement(env, swapWithReservationId, "assigned", actor, {
+        tableIds: bNew,
+        previousTableIds: other.tableIds,
+        swappedWith: reservationId,
+      }),
+      domainEventStatement(env.DB, env.ORGANIZATION_ID, {
+        type: "reservation.assigned",
+        payload: {
+          reservationId,
+          serviceDate: existing.serviceDate,
+          tableIds: aNew,
+          assignmentLocked: true,
+          swappedWith: swapWithReservationId,
+        },
+      }).statement,
+      domainEventStatement(env.DB, env.ORGANIZATION_ID, {
+        type: "reservation.assigned",
+        payload: {
+          reservationId: swapWithReservationId,
+          serviceDate: other.serviceDate,
+          tableIds: bNew,
+          assignmentLocked: true,
+          swappedWith: reservationId,
+        },
+      }).statement,
+    ];
+    await env.DB.batch(statements);
+
+    return jsonResponse(request, env, await getReservation(env, reservationId));
   }
 
   const conflicts = await conflictingTableIds(

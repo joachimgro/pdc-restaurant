@@ -1,10 +1,8 @@
-import { Suspense } from "react";
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 import { LoginForm } from "./LoginForm";
 
 export default function LoginPage() {
-  return (
-    <Suspense fallback={<div className="loading-screen">Loading…</div>}>
-      <LoginForm />
-    </Suspense>
-  );
+  return <LoginForm />;
 }

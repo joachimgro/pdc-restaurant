@@ -1,7 +1,9 @@
 import { jsonResponse } from "../cors";
+import { kitchenEnabled } from "../capabilities";
 import { getOrgLocations } from "../db/locations";
 import { seedDatabase } from "../db/seed";
 import { syncAllSchedulesForLocation } from "../db/schedule-knowledge";
+import { seedKitchenMenu } from "../plugins/kitchen/seed";
 import type { Env } from "../env";
 
 export async function handleAdminSeed(
@@ -25,5 +27,15 @@ export async function handleAdminSeed(
     }
   }
 
-  return jsonResponse(request, env, result);
+  let kitchenMenuSeeded = false;
+  if (kitchenEnabled(env) && locations.length > 0) {
+    try {
+      const menuResult = await seedKitchenMenu(env, locations[0].id);
+      kitchenMenuSeeded = menuResult.seeded;
+    } catch (e) {
+      console.warn("Kitchen menu seed", e);
+    }
+  }
+
+  return jsonResponse(request, env, { ...result, kitchenMenuSeeded });
 }
