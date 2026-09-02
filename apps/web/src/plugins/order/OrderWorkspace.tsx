@@ -3,7 +3,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { fetchAuthMe } from "@/lib/api/client";
-import { fetchFloorPlan } from "@/plugins/service/api/console";
+import {
+  fetchFloorPlan,
+  fetchVenueSettings,
+} from "@/plugins/service/api/console";
 import type { FloorPlan, Room } from "@lead-intake/shared-types";
 import {
   createKitchenOrder,
@@ -100,7 +103,11 @@ export function OrderWorkspace() {
   const [banner, setBanner] = useState<Banner | null>(null);
   const [choiceFlow, setChoiceFlow] = useState<ChoiceFlow | null>(null);
   const [noteSheet, setNoteSheet] = useState<NoteSheet | null>(null);
+  const [highlightIds, setHighlightIds] = useState<string[]>([]);
+  const [quickNotes, setQuickNotes] = useState<string[]>([...QUICK_NOTES]);
   const bannerTimer = useRef<number | null>(null);
+  const retryTimer = useRef<number | null>(null);
+  const autoRetriedRef = useRef(false);
   const ticketPaneRef = useRef<HTMLDivElement | null>(null);
 
   const ensureOrderKey = useCallback(() => {
@@ -147,6 +154,17 @@ export function OrderWorkspace() {
       }
       setAuthReady(true);
       await Promise.all([loadFloor(), loadMenu(), loadTickets()]);
+      const settingsResult = await fetchVenueSettings();
+      if (cancelled || !settingsResult.ok) return;
+      const notes = settingsResult.data.settings.brand?.quickNotes;
+      if (
+        Array.isArray(notes) &&
+        notes.every((n): n is string => typeof n === "string") &&
+        notes.length > 0
+      ) {
+        const list = notes.includes("Custom") ? notes : [...notes, "Custom"];
+        setQuickNotes(list);
+      }
     })();
     return () => {
       cancelled = true;
@@ -162,6 +180,7 @@ export function OrderWorkspace() {
   useEffect(() => {
     return () => {
       if (bannerTimer.current) window.clearTimeout(bannerTimer.current);
+      if (retryTimer.current) window.clearTimeout(retryTimer.current);
     };
   }, []);
 
@@ -240,6 +259,12 @@ export function OrderWorkspace() {
     setSentOpen(false);
     setChoiceFlow(null);
     setNoteSheet(null);
+    setHighlightIds([]);
+    autoRetriedRef.current = false;
+    if (retryTimer.current) {
+      window.clearTimeout(retryTimer.current);
+      retryTimer.current = null;
+    }
   }
 
   function openTable(label: string) {
@@ -391,11 +416,19 @@ export function OrderWorkspace() {
     setNoteSheet(null);
   }
 
-  async function sendOrder() {
+  async function sendOrder(opts?: { isAutoRetry?: boolean }) {
     if (!tableLabel || lines.length === 0 || sending) return;
+    if (!opts?.isAutoRetry) {
+      autoRetriedRef.current = false;
+      if (retryTimer.current) {
+        window.clearTimeout(retryTimer.current);
+        retryTimer.current = null;
+      }
+    }
     const key = orderKey ?? crypto.randomUUID();
     if (!orderKey) setOrderKey(key);
     setSending(true);
+    setHighlightIds([]);
     const result = await createKitchenOrder({
       orderKey: key,
       tableLabel,
@@ -410,10 +443,50 @@ export function OrderWorkspace() {
     });
     setSending(false);
     if (!result.ok) {
+      if (
+        result.code === "UNAUTHORIZED" ||
+        result.code === "HTTP_401"
+      ) {
+        router.replace("/login?next=/order");
+        return;
+      }
+      if (result.code === "ITEM_UNAVAILABLE") {
+        const details = result.details as { itemIds?: unknown } | undefined;
+        const ids = Array.isArray(details?.itemIds)
+          ? details.itemIds.filter((id): id is string => typeof id === "string")
+          : [];
+        const idSet = new Set(ids);
+        setHighlightIds(ids);
+        const names = [
+          ...new Set(
+            lines.filter((l) => idSet.has(l.menuItemId)).map((l) => l.name)
+          ),
+        ];
+        const label =
+          names.length === 0
+            ? "An item"
+            : names.length === 1
+              ? names[0]
+              : names.join(", ");
+        showBanner({
+          kind: "err",
+          text: `${label} is 86'd, remove it to send`,
+        });
+        void loadMenu();
+        return;
+      }
+      const retryable =
+        result.code === "NETWORK" || /^HTTP_5\d\d$/.test(result.code);
       showBanner({
         kind: "err",
         text: "Not sent to kitchen. Tap to retry.",
       });
+      if (retryable && !autoRetriedRef.current) {
+        autoRetriedRef.current = true;
+        retryTimer.current = window.setTimeout(() => {
+          void sendOrder({ isAutoRetry: true });
+        }, 2000);
+      }
       return;
     }
     showBanner({ kind: "ok", text: `Sent · Table ${tableLabel}` }, 1000);
@@ -652,10 +725,13 @@ export function OrderWorkspace() {
                   <div className="od-course-head">{group.label}</div>
                   {group.lines.map((line) => {
                     const open = expandedKey === line.key;
+                    const unavailable = highlightIds.includes(line.menuItemId);
                     return (
                       <div
                         key={line.key}
-                        className={`od-line${open ? " is-open" : ""}`}
+                        className={`od-line${open ? " is-open" : ""}${
+                          unavailable ? " is-unavailable" : ""
+                        }`}
                         onClick={() =>
                           setExpandedKey((k) =>
                             k === line.key ? null : line.key
@@ -855,7 +931,7 @@ export function OrderWorkspace() {
               </button>
             </div>
             <div className="od-quick-chips">
-              {QUICK_NOTES.map((note) => {
+              {quickNotes.map((note) => {
                 if (note === "Custom") {
                   return (
                     <button

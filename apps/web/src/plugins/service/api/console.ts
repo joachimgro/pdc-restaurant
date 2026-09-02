@@ -11,6 +11,7 @@ import {
   type ServicePeriod,
   type TurnTimeRule,
   type VenueSettings,
+  type VenueSettingsInput,
 } from "@lead-intake/shared-types";
 
 export type ServiceDay = {
@@ -75,6 +76,21 @@ async function call<T>(
 
 export function fetchDay(date: string): Promise<ApiResult<ServiceDay>> {
   return call<ServiceDay>(`/service/day?date=${encodeURIComponent(date)}`);
+}
+
+export function fetchVenueSettings(): Promise<
+  ApiResult<{ settings: VenueSettings }>
+> {
+  return call("/service/settings");
+}
+
+export function putVenueSettings(
+  input: VenueSettingsInput
+): Promise<ApiResult<{ settings: VenueSettings }>> {
+  return call("/service/settings", {
+    method: "PUT",
+    body: JSON.stringify(input),
+  });
 }
 
 export async function fetchFloorPlan(): Promise<ApiResult<FloorPlan>> {

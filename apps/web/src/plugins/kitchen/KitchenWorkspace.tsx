@@ -2,7 +2,12 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { fetchAuthMe } from "@/lib/api/client";
 import { fetchCapabilities, type Capabilities } from "@/lib/api/capabilities";
+import {
+  fetchVenueSettings,
+  putVenueSettings,
+} from "@/plugins/service/api/console";
 import type {
   KitchenMenuCategory,
   KitchenMenuChoiceGroup,
@@ -42,7 +47,6 @@ const MODES: { id: KitchenMode | "order"; label: string; hint?: string }[] = [
 
 /** Industry KDS aging: fresh → warning → late (Toast/Square-style). */
 const AGE_WARN_MS = 8 * 60_000;
-const AGE_LATE_MS = KITCHEN_LATE_MINUTES * 60_000;
 
 const SERVE_MODE_LABELS: Record<string, string> = {
   courses: "In courses",
@@ -100,8 +104,11 @@ function ticketAgeMs(ticket: KitchenTicket, now: number): number {
   return Math.max(0, now - start);
 }
 
-function ageBand(ms: number): "fresh" | "warn" | "late" {
-  if (ms >= AGE_LATE_MS) return "late";
+function ageBand(
+  ms: number,
+  lateMs: number
+): "fresh" | "warn" | "late" {
+  if (ms >= lateMs) return "late";
   if (ms >= AGE_WARN_MS) return "warn";
   return "fresh";
 }
@@ -116,9 +123,24 @@ function formatElapsed(ms: number): string {
   return `${mins}:${String(secs).padStart(2, "0")}`;
 }
 
+function readKitchenLateMinutes(
+  brand: Record<string, unknown> | null | undefined
+): number | null {
+  const raw = brand?.kitchenLateMinutes;
+  if (typeof raw === "number" && Number.isFinite(raw) && raw > 0) {
+    return Math.round(raw);
+  }
+  if (typeof raw === "string" && raw.trim() !== "") {
+    const n = Number(raw);
+    if (Number.isFinite(n) && n > 0) return Math.round(n);
+  }
+  return null;
+}
+
 export function KitchenWorkspace() {
   const router = useRouter();
   const [caps, setCaps] = useState<Capabilities | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
   const [mode, setMode] = useState<KitchenMode>("chef");
   const [menu, setMenu] = useState<KitchenMenuCategory[]>([]);
   const [tickets, setTickets] = useState<KitchenTicket[]>([]);
@@ -126,6 +148,7 @@ export function KitchenWorkspace() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [now, setNow] = useState(() => Date.now());
+  const [lateMinutes, setLateMinutes] = useState(KITCHEN_LATE_MINUTES);
   const [lastBumped, setLastBumped] = useState<{
     id: string;
     prev: "in_progress" | "ready" | "served" | "void" | "new";
@@ -135,8 +158,22 @@ export function KitchenWorkspace() {
     name: string;
   } | null>(null);
 
+  const lateMs = lateMinutes * 60_000;
+
   useEffect(() => {
     void fetchCapabilities().then(setCaps);
+    void fetchAuthMe().then((user) => {
+      setIsAdmin(Boolean(user?.canManageTeam));
+    });
+  }, []);
+
+  useEffect(() => {
+    void (async () => {
+      const result = await fetchVenueSettings();
+      if (!result.ok) return;
+      const fromBrand = readKitchenLateMinutes(result.data.settings.brand);
+      if (fromBrand != null) setLateMinutes(fromBrand);
+    })();
   }, []);
 
   useEffect(() => {
@@ -211,9 +248,10 @@ export function KitchenWorkspace() {
 
   const lateCount = useMemo(
     () =>
-      kitchenTickets.filter((t) => ageBand(ticketAgeMs(t, now)) === "late")
-        .length,
-    [kitchenTickets, now]
+      kitchenTickets.filter(
+        (t) => ageBand(ticketAgeMs(t, now), lateMs) === "late"
+      ).length,
+    [kitchenTickets, now, lateMs]
   );
 
   async function setTicketStatus(
@@ -344,7 +382,7 @@ export function KitchenWorkspace() {
           {lateCount > 0 && (
             <span
               className="kt-late-pill"
-              title={`Tickets over ${KITCHEN_LATE_MINUTES} minutes`}
+              title={`Tickets over ${lateMinutes} minutes`}
             >
               {lateCount} late
             </span>
@@ -405,7 +443,7 @@ export function KitchenWorkspace() {
             tickets={kitchenTickets}
             now={now}
             busy={busy}
-            lateMinutes={KITCHEN_LATE_MINUTES}
+            lateMinutes={lateMinutes}
             onBump={(id, s) => void setTicketStatus(id, s)}
             onVoid={(id) => void setTicketStatus(id, "void")}
             onEightySix={(menuItemId, name) =>
@@ -421,7 +459,7 @@ export function KitchenWorkspace() {
             tickets={readyTickets}
             now={now}
             busy={busy}
-            lateMinutes={KITCHEN_LATE_MINUTES}
+            lateMinutes={lateMinutes}
             onBump={(id, s) => void setTicketStatus(id, s)}
             onVoid={(id) => void setTicketStatus(id, "void")}
             onEightySix={(menuItemId, name) =>
@@ -434,6 +472,9 @@ export function KitchenWorkspace() {
             menu={menu}
             busy={busy}
             setBusy={setBusy}
+            isAdmin={isAdmin}
+            lateMinutes={lateMinutes}
+            onLateMinutesChange={setLateMinutes}
             onError={setError}
             onMenuUpdate={setMenu}
             onChanged={async () => {
@@ -476,6 +517,9 @@ function MenuEditor({
   menu,
   busy,
   setBusy,
+  isAdmin,
+  lateMinutes,
+  onLateMinutesChange,
   onError,
   onChanged,
   onMenuUpdate,
@@ -483,6 +527,9 @@ function MenuEditor({
   menu: KitchenMenuCategory[];
   busy: boolean;
   setBusy: (v: boolean) => void;
+  isAdmin: boolean;
+  lateMinutes: number;
+  onLateMinutesChange: (n: number) => void;
   onError: (msg: string | null) => void;
   onChanged: () => Promise<void>;
   onMenuUpdate: (categories: KitchenMenuCategory[]) => void;
@@ -496,7 +543,13 @@ function MenuEditor({
   const [itemPrice, setItemPrice] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
   const [scanning, setScanning] = useState(false);
+  const [lateDraft, setLateDraft] = useState(String(lateMinutes));
+  const [lateSaving, setLateSaving] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    setLateDraft(String(lateMinutes));
+  }, [lateMinutes]);
 
   const categoriesForStation = useMemo(
     () => menu.filter((c) => stationMatches(c.station, editStation)),
@@ -667,8 +720,76 @@ function MenuEditor({
     await onChanged();
   }
 
+  async function saveLateMinutes() {
+    const parsed = Number(lateDraft);
+    if (!Number.isFinite(parsed) || parsed < 1 || parsed > 120) {
+      onError("Kitchen late minutes must be between 1 and 120.");
+      return;
+    }
+    const next = Math.round(parsed);
+    setLateSaving(true);
+    onError(null);
+    setNotice(null);
+    const current = await fetchVenueSettings();
+    if (!current.ok) {
+      setLateSaving(false);
+      onError(current.error);
+      return;
+    }
+    const settings = current.data.settings;
+    const brand = {
+      ...(settings.brand ?? {}),
+      kitchenLateMinutes: next,
+    };
+    const { locationId: _locationId, ...input } = settings;
+    const result = await putVenueSettings({ ...input, brand });
+    setLateSaving(false);
+    if (!result.ok) {
+      onError(result.error);
+      return;
+    }
+    const saved =
+      readKitchenLateMinutes(result.data.settings.brand) ?? next;
+    onLateMinutesChange(saved);
+    setLateDraft(String(saved));
+    setNotice(`Kitchen late threshold set to ${saved} minutes.`);
+  }
+
   return (
     <div className="kt-menu-editor">
+      {isAdmin && (
+        <section className="kt-editor-block">
+          <h2 className="kt-board-title">Kitchen timing</h2>
+          <p className="kt-editor-help">
+            Minutes before an open ticket shows as late on the board. Stored in
+            venue brand settings.
+          </p>
+          <div className="kt-editor-row">
+            <label className="kt-radio" style={{ gap: 8 }}>
+              Kitchen late (minutes)
+              <input
+                className="kt-input kt-input-price"
+                type="number"
+                min={1}
+                max={120}
+                inputMode="numeric"
+                value={lateDraft}
+                onChange={(e) => setLateDraft(e.target.value)}
+                aria-label="Kitchen late minutes"
+              />
+            </label>
+            <button
+              type="button"
+              className="kt-btn"
+              disabled={busy || lateSaving}
+              onClick={() => void saveLateMinutes()}
+            >
+              {lateSaving ? "Saving…" : "Save"}
+            </button>
+          </div>
+        </section>
+      )}
+
       <section className="kt-editor-block">
         <h2 className="kt-board-title">Import menu</h2>
         <p className="kt-editor-help">
@@ -911,7 +1032,7 @@ function TicketBoard({
         <div className="kt-ticket-grid">
           {tickets.map((t) => {
             const age = ticketAgeMs(t, now);
-            const band = ageBand(age);
+            const band = ageBand(age, lateMinutes * 60_000);
             const modeLabel = serveModeLabel(t.serveMode);
             const isBar = normalizeStation(t.station) === "bar";
             const courseGroups = groupTicketItemsByCourse(t.items);

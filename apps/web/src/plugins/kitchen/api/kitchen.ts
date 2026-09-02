@@ -214,6 +214,7 @@ export function createKitchenOrder(input: {
   return call("/kitchen/orders", {
     method: "POST",
     body: JSON.stringify(input),
+    signal: AbortSignal.timeout(8000),
   });
 }
 

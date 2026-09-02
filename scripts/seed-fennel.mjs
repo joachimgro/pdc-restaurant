@@ -84,11 +84,28 @@ const venueName = loc.name || "Fennel";
 const timezone = loc.timezone || "Europe/London";
 const abbrev = loc.abbrev || "FNL";
 const bookingSlug = loc.bookingSlug || "fennel";
-const brandJson = JSON.stringify({
+const quickNotes = Array.isArray(menu.quick_notes) ? menu.quick_notes : [];
+const brandPatch = {
   accent: "#2F6F4E",
   displayName: venueName,
-  quickNotes: Array.isArray(menu.quick_notes) ? menu.quick_notes : [],
-});
+  quickNotes,
+};
+const brandJson = JSON.stringify(brandPatch);
+
+// Keep the order UI constant in sync with menu JSON (brand is source of truth at runtime).
+const notesForConst = quickNotes.includes("Custom")
+  ? quickNotes
+  : [...quickNotes, "Custom"];
+const quickNotesTs = `export const QUICK_NOTES = ${JSON.stringify(
+  notesForConst,
+  null,
+  2
+)} as const;\n`;
+writeFileSync(
+  join(ROOT, "apps", "web", "src", "plugins", "order", "quickNotes.ts"),
+  quickNotesTs,
+  "utf8"
+);
 
 const statements = [];
 
@@ -121,7 +138,7 @@ statements.push(
 ON CONFLICT(location_id) DO UPDATE SET
   timezone = excluded.timezone,
   booking_slug = excluded.booking_slug,
-  brand_json = excluded.brand_json,
+  brand_json = json_patch(COALESCE(venue_settings.brand_json, '{}'), excluded.brand_json),
   contact_phone = excluded.contact_phone,
   contact_email = excluded.contact_email,
   address_text = excluded.address_text;`
@@ -311,7 +328,7 @@ try {
     `\nFennel seeded: org “${orgName}”, ${(floor.rooms ?? []).length} rooms, ${(floor.tables ?? []).length} tables, ${(menu.categories ?? []).length} categories / ${itemCount} items (available=1).`
   );
   console.log(
-    "quick_notes stored in venue_settings.brand_json.quickNotes (order UI still uses plugins/order/quickNotes.ts until Phase 6 wires it)."
+    "quick_notes merged into venue_settings.brand_json.quickNotes (json_patch; preserves other brand keys). Also synced apps/web/src/plugins/order/quickNotes.ts."
   );
 } catch {
   console.error("\nFennel seed failed. Apply migrations first.");

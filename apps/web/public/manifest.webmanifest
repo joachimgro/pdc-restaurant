@@ -1,11 +1,11 @@
 {
-  "name": "The Test Kitchen",
-  "short_name": "Kitchen",
+  "name": "PDC Order",
+  "short_name": "Order",
   "description": "Service console and online booking",
-  "start_url": "/inbox",
+  "start_url": "/order",
   "scope": "/",
   "display": "standalone",
-  "orientation": "any",
+  "orientation": "landscape",
   "background_color": "#0E0F12",
   "theme_color": "#0E0F12",
   "icons": [
