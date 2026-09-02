@@ -1,0 +1,82 @@
+{
+  "categories": [
+    {
+      "name": "Starters",
+      "station": "kitchen",
+      "default_course": "starter",
+      "items": [
+        { "name": "Soup of the day", "price_pence": 750 },
+        { "name": "Chicken liver pâté", "price_pence": 850 },
+        { "name": "Prawn cocktail", "price_pence": 950 },
+        { "name": "Burrata & tomatoes", "price_pence": 1100 }
+      ]
+    },
+    {
+      "name": "Mains",
+      "station": "kitchen",
+      "default_course": "main",
+      "items": [
+        {
+          "name": "Ribeye 10oz",
+          "price_pence": 2850,
+          "choices": [
+            {
+              "label": "Temperature",
+              "required": true,
+              "options": [
+                "Rare",
+                "Medium rare",
+                "Medium",
+                "Medium well",
+                "Well done"
+              ]
+            }
+          ]
+        },
+        {
+          "name": "Sirloin 8oz",
+          "price_pence": 2450,
+          "choices": [
+            {
+              "label": "Temperature",
+              "required": true,
+              "options": [
+                "Rare",
+                "Medium rare",
+                "Medium",
+                "Medium well",
+                "Well done"
+              ]
+            }
+          ]
+        },
+        { "name": "Pan-seared salmon", "price_pence": 2200 },
+        { "name": "Roast chicken", "price_pence": 1750 },
+        { "name": "House burger", "price_pence": 1650 }
+      ]
+    },
+    {
+      "name": "Desserts",
+      "station": "kitchen",
+      "default_course": "dessert",
+      "items": [
+        { "name": "Sticky toffee pudding", "price_pence": 800 },
+        { "name": "Dark chocolate brownie", "price_pence": 750 },
+        { "name": "Affogato", "price_pence": 700 }
+      ]
+    },
+    {
+      "name": "Drinks",
+      "station": "bar",
+      "default_course": null,
+      "items": [
+        { "name": "House red", "price_pence": 650 },
+        { "name": "Lager pint", "price_pence": 550 },
+        { "name": "Negroni", "price_pence": 950 },
+        { "name": "Still water", "price_pence": 200 },
+        { "name": "Sparkling water", "price_pence": 250 }
+      ]
+    }
+  ],
+  "quick_notes": ["No onion", "No sauce", "Allergy", "On the side", "Custom"]
+}

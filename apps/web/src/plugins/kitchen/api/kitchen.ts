@@ -227,4 +227,41 @@ export function setMenuItemAvailability(
   });
 }
 
+export function updateKitchenMenuCategory(
+  id: string,
+  input: { station?: string; defaultCourse?: string | null }
+): Promise<ApiResult<{ category: KitchenMenuCategory }>> {
+  return call(`/kitchen/menu/categories/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
+}
+
+export function updateKitchenMenuItem(
+  id: string,
+  input: {
+    name?: string;
+    pricePence?: number;
+    station?: string;
+    choices?:
+      | { label: string; required: boolean; options: string[] }[]
+      | null;
+  }
+): Promise<
+  ApiResult<{
+    item: {
+      id: string;
+      name: string;
+      pricePence: number;
+      station: string;
+      choices: { label: string; required: boolean; options: string[] }[] | null;
+    };
+  }>
+> {
+  return call(`/kitchen/menu/items/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
+}
+
 export type { KitchenMenuCategory, KitchenTicket };

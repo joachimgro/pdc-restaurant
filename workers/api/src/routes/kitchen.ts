@@ -14,6 +14,8 @@ import {
   reorderKitchenMenu,
   setMenuItemAvailability,
   updateKitchenTicketStatus,
+  updateMenuCategory,
+  updateMenuItem,
   type KitchenTicketStatus,
 } from "../plugins/kitchen/db";
 import { parseMenuImport } from "../plugins/kitchen/menu-import";
@@ -42,9 +44,20 @@ const TicketStatusSchema = z.object({
   status: z.enum(["in_progress", "ready", "served", "void"]),
 });
 
+const DefaultCourseSchema = z
+  .enum(["starter", "main", "dessert"])
+  .nullable()
+  .optional();
+
 const CreateCategorySchema = z.object({
   name: z.string().min(1).max(80),
   station: z.string().min(1).max(40).optional(),
+  defaultCourse: DefaultCourseSchema,
+});
+
+const UpdateCategorySchema = z.object({
+  station: z.string().min(1).max(40).optional(),
+  defaultCourse: DefaultCourseSchema,
 });
 
 const CreateItemSchema = z.object({
@@ -53,6 +66,13 @@ const CreateItemSchema = z.object({
   pricePence: z.number().int().min(0).optional(),
   station: z.string().min(1).max(40).optional(),
   description: z.string().max(500).nullable().optional(),
+  choices: z.unknown().optional(),
+});
+
+const UpdateItemSchema = z.object({
+  name: z.string().min(1).max(120).optional(),
+  pricePence: z.number().int().min(0).optional(),
+  station: z.string().min(1).max(40).optional(),
   choices: z.unknown().optional(),
 });
 
@@ -387,6 +407,62 @@ export async function handleCreateMenuCategory(
   return jsonResponse(request, env, { category }, 201);
 }
 
+/** PATCH /kitchen/menu/categories/:id */
+export async function handleUpdateMenuCategory(
+  request: Request,
+  env: Env,
+  categoryId: string
+): Promise<Response> {
+  const session = await requireSession(request, env);
+  if (session instanceof Response) return session;
+
+  const locationId = await resolveLocationId(request, env);
+  if (!locationId) {
+    return kitchenError(request, env, 404, "NO_LOCATION", "No location configured");
+  }
+
+  const body = await readJson(request);
+  if (body === INVALID) {
+    return kitchenError(request, env, 400, "INVALID_JSON", "Invalid JSON");
+  }
+
+  const parsed = UpdateCategorySchema.safeParse(body);
+  if (!parsed.success) {
+    return kitchenError(
+      request,
+      env,
+      400,
+      "INVALID_CATEGORY",
+      "Category failed validation",
+      parsed.error.issues
+    );
+  }
+
+  if (
+    parsed.data.station === undefined &&
+    parsed.data.defaultCourse === undefined
+  ) {
+    return kitchenError(
+      request,
+      env,
+      400,
+      "EMPTY_UPDATE",
+      "Provide station and/or defaultCourse"
+    );
+  }
+
+  const category = await updateMenuCategory(
+    env,
+    locationId,
+    categoryId,
+    parsed.data
+  );
+  if (!category) {
+    return kitchenError(request, env, 404, "NOT_FOUND", "Category not found");
+  }
+  return jsonResponse(request, env, { category });
+}
+
 /** POST /kitchen/menu/items */
 export async function handleCreateMenuItem(
   request: Request,
@@ -431,6 +507,62 @@ export async function handleCreateMenuItem(
     );
   }
   return jsonResponse(request, env, { item }, 201);
+}
+
+/** PATCH /kitchen/menu/items/:id */
+export async function handleUpdateMenuItem(
+  request: Request,
+  env: Env,
+  itemId: string
+): Promise<Response> {
+  const session = await requireSession(request, env);
+  if (session instanceof Response) return session;
+
+  const locationId = await resolveLocationId(request, env);
+  if (!locationId) {
+    return kitchenError(request, env, 404, "NO_LOCATION", "No location configured");
+  }
+
+  const body = await readJson(request);
+  if (body === INVALID) {
+    return kitchenError(request, env, 400, "INVALID_JSON", "Invalid JSON");
+  }
+
+  const parsed = UpdateItemSchema.safeParse(body);
+  if (!parsed.success) {
+    return kitchenError(
+      request,
+      env,
+      400,
+      "INVALID_ITEM",
+      "Item failed validation",
+      parsed.error.issues
+    );
+  }
+
+  if (
+    parsed.data.name === undefined &&
+    parsed.data.pricePence === undefined &&
+    parsed.data.station === undefined &&
+    parsed.data.choices === undefined
+  ) {
+    return kitchenError(
+      request,
+      env,
+      400,
+      "EMPTY_UPDATE",
+      "Provide name, pricePence, station, and/or choices"
+    );
+  }
+
+  const item = await updateMenuItem(env, locationId, itemId, parsed.data);
+  if (!item) {
+    return kitchenError(request, env, 404, "NOT_FOUND", "Menu item not found");
+  }
+  if ("error" in item) {
+    return kitchenError(request, env, 400, "INVALID_CHOICES", item.message);
+  }
+  return jsonResponse(request, env, { item });
 }
 
 /** PATCH /kitchen/menu/items/:id/availability */

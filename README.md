@@ -24,7 +24,7 @@ Restaurant-only PDC instance (fork of `pdc-template`). Source of truth for featu
 
 - Service: Today / Floor / Calendar / Stats (Waitlist UI gated off)
 - Guests inbox + contact threads (Flag / Mute)
-- Kitchen plugin: Fire / Cook / Expo / Menu boards
+- Kitchen plugin: Order / Kitchen / Menu boards
 - Auth + booking mail: `admin@bookings.phiof.digital`
 
 ## Local trial

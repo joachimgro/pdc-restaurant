@@ -812,18 +812,35 @@ export async function importKitchenMenu(
 export async function createMenuCategory(
   env: Env,
   locationId: string,
-  input: { name: string; station?: string }
+  input: {
+    name: string;
+    station?: string;
+    defaultCourse?: string | null;
+  }
 ): Promise<KitchenMenuCategory> {
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
   const station = input.station?.trim() || "restaurant";
+  const defaultCourse =
+    input.defaultCourse === undefined
+      ? null
+      : input.defaultCourse?.trim() || null;
   await env.DB.prepare(
     `INSERT INTO menu_categories (
-       id, organization_id, location_id, name, station, sort_order,
+       id, organization_id, location_id, name, station, default_course, sort_order,
        is_active, created_at, updated_at
-     ) VALUES (?, ?, ?, ?, ?, 500, 1, ?, ?)`
+     ) VALUES (?, ?, ?, ?, ?, ?, 500, 1, ?, ?)`
   )
-    .bind(id, env.ORGANIZATION_ID, locationId, input.name.trim(), station, now, now)
+    .bind(
+      id,
+      env.ORGANIZATION_ID,
+      locationId,
+      input.name.trim(),
+      station,
+      defaultCourse,
+      now,
+      now
+    )
     .run();
 
   const menu = await getKitchenMenu(env, locationId);
@@ -833,12 +850,47 @@ export async function createMenuCategory(
       id,
       name: input.name.trim(),
       station,
-      defaultCourse: null,
+      defaultCourse,
       sortOrder: 500,
       items: [],
     };
   }
   return created;
+}
+
+export async function updateMenuCategory(
+  env: Env,
+  locationId: string,
+  categoryId: string,
+  input: { station?: string; defaultCourse?: string | null }
+): Promise<KitchenMenuCategory | null> {
+  const existing = await env.DB.prepare(
+    `SELECT id, station, default_course FROM menu_categories
+     WHERE id = ? AND organization_id = ? AND location_id = ? AND is_active = 1`
+  )
+    .bind(categoryId, env.ORGANIZATION_ID, locationId)
+    .first<{ id: string; station: string; default_course: string | null }>();
+  if (!existing) return null;
+
+  const station =
+    input.station !== undefined
+      ? input.station.trim() || existing.station
+      : existing.station;
+  const defaultCourse =
+    input.defaultCourse !== undefined
+      ? input.defaultCourse?.trim() || null
+      : existing.default_course;
+  const now = new Date().toISOString();
+  await env.DB.prepare(
+    `UPDATE menu_categories
+     SET station = ?, default_course = ?, updated_at = ?
+     WHERE id = ? AND organization_id = ? AND location_id = ? AND is_active = 1`
+  )
+    .bind(station, defaultCourse, now, categoryId, env.ORGANIZATION_ID, locationId)
+    .run();
+
+  const menu = await getKitchenMenu(env, locationId);
+  return menu.find((c) => c.id === categoryId) ?? null;
 }
 
 export async function createMenuItem(
@@ -901,6 +953,81 @@ export async function createMenuItem(
     station,
     sortOrder: 500,
     available: true,
+    choices: choicesCheck.value,
+  };
+}
+
+export async function updateMenuItem(
+  env: Env,
+  locationId: string,
+  itemId: string,
+  input: {
+    name?: string;
+    pricePence?: number;
+    station?: string;
+    choices?: unknown;
+  }
+): Promise<
+  KitchenMenuItem | null | { error: "INVALID_CHOICES"; message: string }
+> {
+  const existing = await env.DB.prepare(
+    `SELECT id, category_id, name, description, price_pence, station, sort_order,
+            available, choices
+     FROM menu_items
+     WHERE id = ? AND organization_id = ? AND location_id = ? AND is_active = 1`
+  )
+    .bind(itemId, env.ORGANIZATION_ID, locationId)
+    .first<MenuItemRow>();
+  if (!existing) return null;
+
+  const choicesInput =
+    input.choices !== undefined ? input.choices : existing.choices;
+  const choicesCheck = parseChoicesJson(choicesInput ?? null);
+  if (!choicesCheck.ok) {
+    return { error: "INVALID_CHOICES", message: choicesCheck.error };
+  }
+
+  const name =
+    input.name !== undefined ? input.name.trim() : existing.name;
+  if (!name) {
+    return { error: "INVALID_CHOICES", message: "name required" };
+  }
+  const pricePence =
+    input.pricePence !== undefined
+      ? Math.max(0, Math.round(input.pricePence))
+      : existing.price_pence;
+  const station =
+    input.station !== undefined
+      ? input.station.trim() || existing.station
+      : existing.station;
+  const now = new Date().toISOString();
+
+  await env.DB.prepare(
+    `UPDATE menu_items
+     SET name = ?, price_pence = ?, station = ?, choices = ?, updated_at = ?
+     WHERE id = ? AND organization_id = ? AND location_id = ? AND is_active = 1`
+  )
+    .bind(
+      name,
+      pricePence,
+      station,
+      choicesCheck.value ? JSON.stringify(choicesCheck.value) : null,
+      now,
+      itemId,
+      env.ORGANIZATION_ID,
+      locationId
+    )
+    .run();
+
+  return {
+    id: itemId,
+    categoryId: existing.category_id,
+    name,
+    description: existing.description,
+    pricePence,
+    station,
+    sortOrder: existing.sort_order,
+    available: existing.available !== 0,
     choices: choicesCheck.value,
   };
 }

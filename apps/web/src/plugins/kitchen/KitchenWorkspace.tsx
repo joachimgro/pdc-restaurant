@@ -1,19 +1,27 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { fetchCapabilities, type Capabilities } from "@/lib/api/capabilities";
-import type { KitchenMenuCategory, KitchenTicket } from "./api/kitchen-types";
+import type {
+  KitchenMenuCategory,
+  KitchenMenuChoiceGroup,
+  KitchenTicket,
+} from "./api/kitchen-types";
 import {
   createKitchenMenuCategory,
   createKitchenMenuItem,
-  createKitchenTicket,
   deleteKitchenMenuItem,
   fetchKitchenMenu,
   fetchKitchenTickets,
   importKitchenMenu,
   parseMenuImage,
+  setMenuItemAvailability,
+  updateKitchenMenuCategory,
+  updateKitchenMenuItem,
   updateKitchenTicketStatus,
 } from "./api/kitchen";
+import { KITCHEN_LATE_MINUTES } from "./constants";
 import { MenuStationSorter } from "./MenuStationSorter";
 import {
   MENU_STATIONS,
@@ -24,18 +32,17 @@ import {
 } from "./stations";
 import "./kitchen.css";
 
-type KitchenMode = "submit" | "chef" | "ready" | "menu";
+type KitchenMode = "chef" | "ready" | "menu";
 
-const MODES: { id: KitchenMode; label: string; hint: string }[] = [
-  { id: "submit", label: "Fire", hint: "Send tickets" },
-  { id: "chef", label: "Cook", hint: "Active board" },
-  { id: "ready", label: "Expo", hint: "Ready to run" },
+const MODES: { id: KitchenMode | "order"; label: string; hint?: string }[] = [
+  { id: "order", label: "Order" },
+  { id: "chef", label: "Kitchen" },
   { id: "menu", label: "Menu", hint: "Edit / import" },
 ];
 
 /** Industry KDS aging: fresh → warning → late (Toast/Square-style). */
 const AGE_WARN_MS = 8 * 60_000;
-const AGE_LATE_MS = 15 * 60_000;
+const AGE_LATE_MS = KITCHEN_LATE_MINUTES * 60_000;
 
 const SERVE_MODE_LABELS: Record<string, string> = {
   courses: "In courses",
@@ -110,20 +117,22 @@ function formatElapsed(ms: number): string {
 }
 
 export function KitchenWorkspace() {
+  const router = useRouter();
   const [caps, setCaps] = useState<Capabilities | null>(null);
-  const [mode, setMode] = useState<KitchenMode>("submit");
+  const [mode, setMode] = useState<KitchenMode>("chef");
   const [menu, setMenu] = useState<KitchenMenuCategory[]>([]);
   const [tickets, setTickets] = useState<KitchenTicket[]>([]);
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [error, setError] = useState<string | null>(null);
-  const [tableLabel, setTableLabel] = useState("");
-  const [station, setStation] = useState<MenuStationId>("restaurant");
-  const [cart, setCart] = useState<Record<string, number>>({});
   const [busy, setBusy] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   const [lastBumped, setLastBumped] = useState<{
     id: string;
     prev: "in_progress" | "ready" | "served" | "void" | "new";
+  } | null>(null);
+  const [availUndo, setAvailUndo] = useState<{
+    menuItemId: string;
+    name: string;
   } | null>(null);
 
   useEffect(() => {
@@ -180,50 +189,7 @@ export function KitchenWorkspace() {
     return () => window.clearInterval(timer);
   }, [caps?.kitchen, status, loadBoard]);
 
-  const menuForStation = useMemo(
-    () =>
-      menu
-        .map((cat) => ({
-          ...cat,
-          station: normalizeStation(cat.station),
-          items: cat.items.filter((i) => stationMatches(i.station, station)),
-        }))
-        .filter(
-          (cat) =>
-            cat.items.length > 0 || stationMatches(cat.station, station)
-        )
-        .map((cat) =>
-          // Keep categories that belong to this area even if empty (editing context);
-          // Fire only needs ones with items — filter empty for submit via items length.
-          cat
-        )
-        .filter((cat) => cat.items.length > 0),
-    [menu, station]
-  );
-
-  const stationCounts = useMemo(() => {
-    const counts: Record<MenuStationId, number> = {
-      restaurant: 0,
-      cafe: 0,
-      bar: 0,
-    };
-    for (const cat of menu) {
-      for (const item of cat.items) {
-        counts[normalizeStation(item.station)] += 1;
-      }
-    }
-    return counts;
-  }, [menu]);
-
-  const chefTickets = useMemo(() => {
-    const list = tickets.filter(
-      (t) => t.status === "new" || t.status === "in_progress"
-    );
-    return [...list].sort(
-      (a, b) => ticketAgeMs(b, now) - ticketAgeMs(a, now)
-    );
-  }, [tickets, now]);
-
+  // Expo board path retained unused (Phase 4 merge into Kitchen).
   const readyTickets = useMemo(() => {
     const list = tickets.filter((t) => t.status === "ready");
     return [...list].sort(
@@ -231,36 +197,24 @@ export function KitchenWorkspace() {
     );
   }, [tickets, now]);
 
+  const kitchenTickets = useMemo(() => {
+    const list = tickets.filter(
+      (t) =>
+        t.status === "new" ||
+        t.status === "in_progress" ||
+        t.status === "ready"
+    );
+    return [...list].sort(
+      (a, b) => ticketAgeMs(b, now) - ticketAgeMs(a, now)
+    );
+  }, [tickets, now]);
+
   const lateCount = useMemo(
     () =>
-      [...chefTickets, ...readyTickets].filter(
-        (t) => ageBand(ticketAgeMs(t, now)) === "late"
-      ).length,
-    [chefTickets, readyTickets, now]
+      kitchenTickets.filter((t) => ageBand(ticketAgeMs(t, now)) === "late")
+        .length,
+    [kitchenTickets, now]
   );
-
-  async function submitTicket() {
-    const items = Object.entries(cart)
-      .filter(([, qty]) => qty > 0)
-      .map(([menuItemId, qty]) => ({ menuItemId, qty }));
-    if (items.length === 0) return;
-
-    setBusy(true);
-    const result = await createKitchenTicket({
-      station,
-      tableLabel: tableLabel.trim() || undefined,
-      items,
-    });
-    setBusy(false);
-    if (!result.ok) {
-      setError(result.error);
-      return;
-    }
-    setCart({});
-    setTableLabel("");
-    await loadBoard();
-    setMode("chef");
-  }
 
   async function setTicketStatus(
     id: string,
@@ -302,6 +256,33 @@ export function KitchenWorkspace() {
     await loadBoard();
   }
 
+  async function eightySixItem(menuItemId: string | null, name: string) {
+    if (!menuItemId) return;
+    setBusy(true);
+    setError(null);
+    const result = await setMenuItemAvailability(menuItemId, false);
+    setBusy(false);
+    if (!result.ok) {
+      setError(result.error);
+      return;
+    }
+    setAvailUndo({ menuItemId, name });
+    await loadMenuOnly();
+  }
+
+  async function undoEightySix() {
+    if (!availUndo) return;
+    setBusy(true);
+    const result = await setMenuItemAvailability(availUndo.menuItemId, true);
+    setBusy(false);
+    if (!result.ok) {
+      setError(result.error);
+      return;
+    }
+    setAvailUndo(null);
+    await loadMenuOnly();
+  }
+
   if (!caps) {
     return <div className="kt-loading">Loading…</div>;
   }
@@ -332,24 +313,39 @@ export function KitchenWorkspace() {
   return (
     <div className="kt-root" style={{ gridColumn: "2 / -1" }}>
       <div className="kt-panel kt-mode-bar">
-        <div className="kt-mode-segment kt-mode-segment-4" role="tablist" aria-label="Kitchen mode">
+        <div
+          className="kt-mode-segment kt-mode-segment-3"
+          role="tablist"
+          aria-label="Kitchen mode"
+        >
           {MODES.map((m) => (
             <button
               key={m.id}
               type="button"
               role="tab"
-              aria-selected={mode === m.id}
-              className={`kt-mode-btn${mode === m.id ? " is-active" : ""}`}
-              onClick={() => setMode(m.id)}
+              aria-selected={m.id === "order" ? false : mode === m.id}
+              className={`kt-mode-btn${
+                m.id !== "order" && mode === m.id ? " is-active" : ""
+              }`}
+              onClick={() => {
+                if (m.id === "order") {
+                  router.push("/order");
+                  return;
+                }
+                setMode(m.id);
+              }}
             >
               <span className="kt-mode-label">{m.label}</span>
-              <span className="kt-mode-hint">{m.hint}</span>
+              {m.hint ? <span className="kt-mode-hint">{m.hint}</span> : null}
             </button>
           ))}
         </div>
         <div className="kt-board-meta">
           {lateCount > 0 && (
-            <span className="kt-late-pill" title="Tickets over 15 minutes">
+            <span
+              className="kt-late-pill"
+              title={`Tickets over ${KITCHEN_LATE_MINUTES} minutes`}
+            >
               {lateCount} late
             </span>
           )}
@@ -369,56 +365,68 @@ export function KitchenWorkspace() {
       {error && (
         <div className="kt-error kt-panel" role="alert">
           {error}
-          <button type="button" className="kt-icon-btn" onClick={() => setError(null)}>
+          <button
+            type="button"
+            className="kt-icon-btn"
+            onClick={() => setError(null)}
+          >
+            ×
+          </button>
+        </div>
+      )}
+
+      {availUndo && (
+        <div className="kt-undo-toast kt-panel" role="status">
+          <span>86’d {availUndo.name}</span>
+          <button
+            type="button"
+            className="kt-btn kt-btn-ghost"
+            disabled={busy}
+            onClick={() => void undoEightySix()}
+          >
+            Undo
+          </button>
+          <button
+            type="button"
+            className="kt-icon-btn"
+            onClick={() => setAvailUndo(null)}
+            aria-label="Dismiss"
+          >
             ×
           </button>
         </div>
       )}
 
       <div className="kt-panel kt-body">
-        {mode === "submit" && (
-          <SubmitMode
-            station={station}
-            onStation={setStation}
-            stationCounts={stationCounts}
-            tableLabel={tableLabel}
-            onTableLabel={setTableLabel}
-            menu={menuForStation}
-            cart={cart}
-            onCart={setCart}
-            busy={busy}
-            onSubmit={() => void submitTicket()}
-            onOpenMenu={() => setMode("menu")}
-          />
-        )}
         {mode === "chef" && (
           <TicketBoard
-            title="Cook board"
-            empty="Nothing firing — fire a ticket or wait for FOH."
-            tickets={chefTickets}
+            title="Kitchen"
+            empty="Nothing on the board — send an order from Order."
+            tickets={kitchenTickets}
             now={now}
             busy={busy}
-            bumpLabel={(t) =>
-              t.status === "new" ? "Start" : "Bump ready"
-            }
-            bumpStatus={(t) =>
-              t.status === "new" ? "in_progress" : "ready"
-            }
+            lateMinutes={KITCHEN_LATE_MINUTES}
             onBump={(id, s) => void setTicketStatus(id, s)}
             onVoid={(id) => void setTicketStatus(id, "void")}
+            onEightySix={(menuItemId, name) =>
+              void eightySixItem(menuItemId, name)
+            }
           />
         )}
+        {/* Expo tab hidden; dead path kept for reference */}
         {mode === "ready" && (
           <TicketBoard
-            title="Expo — ready to run"
-            empty="Nothing ready. Tickets land here when the line bumps them."
+            title="Kitchen"
+            empty="Nothing ready."
             tickets={readyTickets}
             now={now}
             busy={busy}
-            bumpLabel={() => "Served"}
-            bumpStatus={() => "served"}
+            lateMinutes={KITCHEN_LATE_MINUTES}
             onBump={(id, s) => void setTicketStatus(id, s)}
             onVoid={(id) => void setTicketStatus(id, "void")}
+            onEightySix={(menuItemId, name) =>
+              void eightySixItem(menuItemId, name)
+            }
           />
         )}
         {mode === "menu" && (
@@ -436,18 +444,6 @@ export function KitchenWorkspace() {
       </div>
     </div>
   );
-}
-
-function adjustCart(
-  cart: Record<string, number>,
-  itemId: string,
-  delta: number
-): Record<string, number> {
-  const next = { ...cart };
-  const qty = (next[itemId] ?? 0) + delta;
-  if (qty <= 0) delete next[itemId];
-  else next[itemId] = qty;
-  return next;
 }
 
 /** Downscale/compress for Workers AI vision (faster + under size caps). */
@@ -474,234 +470,6 @@ async function prepareMenuImage(file: File): Promise<Blob> {
     canvas.toBlob((b) => resolve(b), "image/jpeg", 0.82)
   );
   return blob ?? file;
-}
-
-function SubmitMode({
-  station,
-  onStation,
-  stationCounts,
-  tableLabel,
-  onTableLabel,
-  menu,
-  cart,
-  onCart,
-  busy,
-  onSubmit,
-  onOpenMenu,
-}: {
-  station: MenuStationId;
-  onStation: (s: MenuStationId) => void;
-  stationCounts: Record<MenuStationId, number>;
-  tableLabel: string;
-  onTableLabel: (v: string) => void;
-  menu: KitchenMenuCategory[];
-  cart: Record<string, number>;
-  onCart: (c: Record<string, number>) => void;
-  busy: boolean;
-  onSubmit: () => void;
-  onOpenMenu: () => void;
-}) {
-  const cartCount = Object.values(cart).reduce((a, b) => a + b, 0);
-  const [categoryId, setCategoryId] = useState<string | null>(null);
-  const skipClickRef = useRef(false);
-  const lastRemoveAtRef = useRef(0);
-
-  useEffect(() => {
-    if (menu.length === 0) {
-      setCategoryId(null);
-      return;
-    }
-    if (!categoryId || !menu.some((c) => c.id === categoryId)) {
-      setCategoryId(menu[0].id);
-    }
-  }, [menu, categoryId]);
-
-  const activeIndex = Math.max(
-    0,
-    menu.findIndex((c) => c.id === categoryId)
-  );
-  const active = menu[activeIndex] ?? null;
-
-  function cycle(delta: number) {
-    if (menu.length === 0) return;
-    const next = (activeIndex + delta + menu.length) % menu.length;
-    setCategoryId(menu[next].id);
-  }
-
-  function addItem(id: string) {
-    onCart(adjustCart(cart, id, 1));
-  }
-
-  /** Right-click / two-finger can fire multiple DOM events — only one remove. */
-  function removeItem(id: string) {
-    const now = Date.now();
-    if (now - lastRemoveAtRef.current < 280) return;
-    lastRemoveAtRef.current = now;
-    skipClickRef.current = true;
-    onCart(adjustCart(cart, id, -1));
-  }
-
-  return (
-    <div className="kt-submit">
-      <div className="kt-submit-meta">
-        <label className="kt-field">
-          <span>Table</span>
-          <input
-            className="kt-input"
-            value={tableLabel}
-            onChange={(e) => onTableLabel(e.target.value)}
-            placeholder="e.g. 12"
-            autoComplete="off"
-          />
-        </label>
-        <button type="button" className="kt-btn kt-btn-ghost" onClick={onOpenMenu}>
-          Edit menu
-        </button>
-      </div>
-
-      <div className="kt-station-bar" role="tablist" aria-label="Service area">
-        {MENU_STATIONS.map((s) => (
-          <button
-            key={s.id}
-            type="button"
-            role="tab"
-            aria-selected={station === s.id}
-            className={`kt-station-chip${station === s.id ? " is-active" : ""}`}
-            onClick={() => onStation(s.id)}
-          >
-            <span className="kt-station-chip-label">{s.label}</span>
-            <span className="kt-station-chip-hint">{s.hint}</span>
-            <span className="kt-cat-count fp-num">{stationCounts[s.id]}</span>
-          </button>
-        ))}
-      </div>
-
-      {menu.length === 0 ? (
-        <div className="kt-empty-menu">
-          <p>
-            No {stationLabel(station).toLowerCase()} items yet. Add them under
-            Menu, tagged for this area.
-          </p>
-          <button type="button" className="kt-btn kt-btn-fire" onClick={onOpenMenu}>
-            Set up menu
-          </button>
-        </div>
-      ) : (
-        <>
-          <div className="kt-cat-bar">
-            <button
-              type="button"
-              className="kt-cat-nav"
-              aria-label="Previous category"
-              onClick={() => cycle(-1)}
-            >
-              ‹
-            </button>
-            <div className="kt-cat-chips" role="tablist" aria-label="Menu categories">
-              {menu.map((cat) => (
-                <button
-                  key={cat.id}
-                  type="button"
-                  role="tab"
-                  aria-selected={cat.id === categoryId}
-                  className={`kt-cat-chip${cat.id === categoryId ? " is-active" : ""}`}
-                  onClick={() => setCategoryId(cat.id)}
-                >
-                  {cat.name}
-                  <span className="kt-cat-count fp-num">{cat.items.length}</span>
-                </button>
-              ))}
-            </div>
-            <button
-              type="button"
-              className="kt-cat-nav"
-              aria-label="Next category"
-              onClick={() => cycle(1)}
-            >
-              ›
-            </button>
-          </div>
-
-          <p className="kt-qty-hint">
-            Tap to add · right-click or two-finger tap to remove
-          </p>
-
-          {active && (
-            <section className="kt-menu-cat" aria-label={active.name}>
-              <div className="kt-menu-grid">
-                {active.items.map((item) => {
-                  const qty = cart[item.id] ?? 0;
-                  return (
-                    <button
-                      key={item.id}
-                      type="button"
-                      className={`kt-menu-item${qty > 0 ? " is-picked" : ""}`}
-                      onClick={() => {
-                        if (skipClickRef.current) {
-                          skipClickRef.current = false;
-                          return;
-                        }
-                        addItem(item.id);
-                      }}
-                      onContextMenu={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        removeItem(item.id);
-                      }}
-                      onTouchStart={(e) => {
-                        if (e.touches.length >= 2) {
-                          e.preventDefault();
-                          removeItem(item.id);
-                        }
-                      }}
-                      onPointerDown={(e) => {
-                        // Suppress the following click only — remove via
-                        // contextmenu so right-click doesn't fire twice.
-                        if (e.button === 2) {
-                          e.preventDefault();
-                          skipClickRef.current = true;
-                        }
-                      }}
-                    >
-                      <span className="kt-menu-item-name">{item.name}</span>
-                      {qty > 0 && (
-                        <span className="kt-menu-item-qty fp-num">{qty}</span>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-            </section>
-          )}
-        </>
-      )}
-
-      <footer className="kt-submit-bar">
-        <div className="kt-submit-bar-left">
-          <span className="fp-num kt-cart-count">
-            {cartCount} item{cartCount === 1 ? "" : "s"}
-          </span>
-          {cartCount > 0 && (
-            <button
-              type="button"
-              className="kt-btn kt-btn-ghost"
-              onClick={() => onCart({})}
-            >
-              Clear
-            </button>
-          )}
-        </div>
-        <button
-          type="button"
-          className="kt-btn kt-btn-fire"
-          disabled={busy || cartCount === 0}
-          onClick={onSubmit}
-        >
-          Fire ticket
-        </button>
-      </footer>
-    </div>
-  );
 }
 
 function MenuEditor({
@@ -849,6 +617,48 @@ function MenuEditor({
     setBusy(true);
     onError(null);
     const result = await deleteKitchenMenuItem(id);
+    setBusy(false);
+    if (!result.ok) {
+      onError(result.error);
+      return;
+    }
+    await onChanged();
+  }
+
+  async function patchCategory(
+    id: string,
+    patch: { station?: string; defaultCourse?: string | null }
+  ) {
+    setBusy(true);
+    onError(null);
+    const result = await updateKitchenMenuCategory(id, patch);
+    setBusy(false);
+    if (!result.ok) {
+      onError(result.error);
+      return;
+    }
+    await onChanged();
+  }
+
+  async function patchItemAvailability(id: string, available: boolean) {
+    setBusy(true);
+    onError(null);
+    const result = await setMenuItemAvailability(id, available);
+    setBusy(false);
+    if (!result.ok) {
+      onError(result.error);
+      return;
+    }
+    await onChanged();
+  }
+
+  async function patchItemChoices(
+    id: string,
+    choices: KitchenMenuChoiceGroup[] | null
+  ) {
+    setBusy(true);
+    onError(null);
+    const result = await updateKitchenMenuItem(id, { choices });
     setBusy(false);
     if (!result.ok) {
       onError(result.error);
@@ -1018,8 +828,8 @@ function MenuEditor({
       <section className="kt-editor-block">
         <h2 className="kt-board-title">Current menu</h2>
         <p className="kt-editor-help">
-          Drag the ⋮⋮ handle to reorder categories and items. Drop an item onto
-          another category in the same area to move it.
+          Drag the ⋮⋮ handle to reorder. Set station and default course per
+          category; toggle Available / 86’d and edit choices per item.
         </p>
         {menu.length === 0 ? (
           <p className="kt-empty">Nothing on the menu yet.</p>
@@ -1037,6 +847,13 @@ function MenuEditor({
                   busy={busy}
                   onError={onError}
                   onRemoveItem={(id, name) => void removeItem(id, name)}
+                  onUpdateCategory={(id, patch) => void patchCategory(id, patch)}
+                  onToggleAvailability={(id, available) =>
+                    void patchItemAvailability(id, available)
+                  }
+                  onSaveChoices={(id, choices) =>
+                    void patchItemChoices(id, choices)
+                  }
                   onOptimistic={(stationCats) => {
                     const other = menu.filter(
                       (c) => !stationMatches(c.station, area.id)
@@ -1060,20 +877,20 @@ function TicketBoard({
   tickets,
   now,
   busy,
-  bumpLabel,
-  bumpStatus,
+  lateMinutes,
   onBump,
   onVoid,
+  onEightySix,
 }: {
   title: string;
   empty: string;
   tickets: KitchenTicket[];
   now: number;
   busy: boolean;
-  bumpLabel: (t: KitchenTicket) => string;
-  bumpStatus: (t: KitchenTicket) => "in_progress" | "ready" | "served";
+  lateMinutes: number;
   onBump: (id: string, status: "in_progress" | "ready" | "served") => void;
   onVoid: (id: string) => void;
+  onEightySix: (menuItemId: string | null, name: string) => void;
 }) {
   return (
     <div className="kt-board">
@@ -1085,7 +902,7 @@ function TicketBoard({
         <p className="kt-board-legend">
           <span className="kt-dot kt-dot-fresh" /> Fresh
           <span className="kt-dot kt-dot-warn" /> 8m+
-          <span className="kt-dot kt-dot-late" /> 15m+
+          <span className="kt-dot kt-dot-late" /> {lateMinutes}m+
         </p>
       </header>
       {tickets.length === 0 ? (
@@ -1101,18 +918,16 @@ function TicketBoard({
             const showCourseHeaders =
               courseGroups.length > 1 ||
               courseGroups.some((g) => g.course != null);
+            const canStart = t.status === "new";
+            const canReady =
+              t.status === "new" || t.status === "in_progress";
+            const canServed = t.status === "ready";
             return (
               <article
                 key={t.id}
                 className={`kt-ticket kt-age-${band} kt-ticket-${t.status}`}
               >
-                <button
-                  type="button"
-                  className="kt-ticket-bump"
-                  disabled={busy}
-                  onClick={() => onBump(t.id, bumpStatus(t))}
-                  aria-label={`${bumpLabel(t)} — table ${t.tableLabel ?? "walk-in"}`}
-                >
+                <div className="kt-ticket-body">
                   <header className="kt-ticket-head">
                     <span className="kt-ticket-table-wrap">
                       <span className="kt-ticket-table">
@@ -1131,20 +946,38 @@ function TicketBoard({
                   </header>
                   <ul className="kt-ticket-items">
                     {courseGroups.map((group, gi) => (
-                      <li key={`${t.id}-g-${group.course ?? "x"}-${gi}`} className="kt-course-group">
+                      <li
+                        key={`${t.id}-g-${group.course ?? "x"}-${gi}`}
+                        className="kt-course-group"
+                      >
                         {showCourseHeaders && group.label && (
                           <div className="kt-course-divider">{group.label}</div>
                         )}
                         <ul className="kt-course-items">
                           {group.items.map((item) => (
-                            <li key={item.id}>
+                            <li key={item.id} className="kt-ticket-line">
                               <span className="kt-qty fp-num">{item.qty}</span>
                               <span className="kt-item-body">
                                 <span className="kt-item-name">{item.name}</span>
                                 {item.notes ? (
-                                  <span className="kt-item-notes">{item.notes}</span>
+                                  <span className="kt-item-notes">
+                                    {item.notes}
+                                  </span>
                                 ) : null}
                               </span>
+                              {item.menuItemId ? (
+                                <button
+                                  type="button"
+                                  className="kt-86-btn"
+                                  disabled={busy}
+                                  onClick={() =>
+                                    onEightySix(item.menuItemId, item.name)
+                                  }
+                                  aria-label={`86 ${item.name}`}
+                                >
+                                  86
+                                </button>
+                              ) : null}
                             </li>
                           ))}
                         </ul>
@@ -1152,8 +985,39 @@ function TicketBoard({
                     ))}
                   </ul>
                   {t.notes && <p className="kt-ticket-mods">{t.notes}</p>}
-                  <span className="kt-bump-cue">{bumpLabel(t)}</span>
-                </button>
+                  <div className="kt-ticket-actions">
+                    {canStart && (
+                      <button
+                        type="button"
+                        className="kt-bump-btn"
+                        disabled={busy}
+                        onClick={() => onBump(t.id, "in_progress")}
+                      >
+                        Start
+                      </button>
+                    )}
+                    {canReady && (
+                      <button
+                        type="button"
+                        className="kt-bump-btn kt-bump-ready"
+                        disabled={busy}
+                        onClick={() => onBump(t.id, "ready")}
+                      >
+                        Ready
+                      </button>
+                    )}
+                    {canServed && (
+                      <button
+                        type="button"
+                        className="kt-bump-btn kt-bump-served"
+                        disabled={busy}
+                        onClick={() => onBump(t.id, "served")}
+                      >
+                        Served
+                      </button>
+                    )}
+                  </div>
+                </div>
                 <button
                   type="button"
                   className="kt-void-btn"

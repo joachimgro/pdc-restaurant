@@ -382,4 +382,48 @@ describe("kitchen orders (trial)", () => {
     expect(steak?.available).toBe(false);
     expect(steak?.choices).toBeTruthy();
   });
+
+  it("patches category station and defaultCourse", async () => {
+    const res = await call(
+      `/kitchen/menu/categories/cat-mains?locationId=${LOCATION_ID}`,
+      {
+        method: "PATCH",
+        token,
+        body: JSON.stringify({
+          station: "restaurant",
+          defaultCourse: "main",
+        }),
+      }
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      category: { defaultCourse: string | null; station: string };
+    };
+    expect(body.category.defaultCourse).toBe("main");
+    expect(body.category.station).toBe("restaurant");
+  });
+
+  it("patches menu item choices", async () => {
+    const choices = [
+      {
+        label: "Side",
+        required: false,
+        options: ["Fries", "Salad"],
+      },
+    ];
+    const res = await call(
+      `/kitchen/menu/items/item-burger?locationId=${LOCATION_ID}`,
+      {
+        method: "PATCH",
+        token,
+        body: JSON.stringify({ choices }),
+      }
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as {
+      item: { choices: { label: string; options: string[] }[] | null };
+    };
+    expect(body.item.choices?.[0]?.label).toBe("Side");
+    expect(body.item.choices?.[0]?.options).toEqual(["Fries", "Salad"]);
+  });
 });

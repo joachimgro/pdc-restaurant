@@ -20,9 +20,13 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import type { KitchenMenuCategory, KitchenMenuItem } from "./api/kitchen-types";
+import type {
+  KitchenMenuCategory,
+  KitchenMenuChoiceGroup,
+  KitchenMenuItem,
+} from "./api/kitchen-types";
 import { reorderKitchenMenu } from "./api/kitchen";
-import { stationLabel, type MenuStationId } from "./stations";
+import { MENU_STATIONS, stationLabel, type MenuStationId } from "./stations";
 
 type CatDrag = { type: "category"; categoryId: string; station: MenuStationId };
 type ItemDrag = {
@@ -31,6 +35,13 @@ type ItemDrag = {
   categoryId: string;
   station: MenuStationId;
 };
+
+const DEFAULT_COURSES = [
+  { value: "", label: "None" },
+  { value: "starter", label: "Starter" },
+  { value: "main", label: "Main" },
+  { value: "dessert", label: "Dessert" },
+] as const;
 
 function catKey(id: string) {
   return `cat:${id}`;
@@ -47,6 +58,9 @@ export function MenuStationSorter({
   onOptimistic,
   onServerMenu,
   onRemoveItem,
+  onUpdateCategory,
+  onToggleAvailability,
+  onSaveChoices,
 }: {
   station: MenuStationId;
   categories: KitchenMenuCategory[];
@@ -55,6 +69,12 @@ export function MenuStationSorter({
   onOptimistic: (stationCategories: KitchenMenuCategory[]) => void;
   onServerMenu: (categories: KitchenMenuCategory[]) => void;
   onRemoveItem: (id: string, name: string) => void;
+  onUpdateCategory?: (
+    id: string,
+    patch: { station?: string; defaultCourse?: string | null }
+  ) => void;
+  onToggleAvailability?: (id: string, available: boolean) => void;
+  onSaveChoices?: (id: string, choices: KitchenMenuChoiceGroup[] | null) => void;
 }) {
   const [activeLabel, setActiveLabel] = useState<string | null>(null);
 
@@ -146,7 +166,7 @@ export function MenuStationSorter({
 
     if (activeData.type !== "item") return;
 
-    let next = categories.map((c) => ({ ...c, items: [...c.items] }));
+    const next = categories.map((c) => ({ ...c, items: [...c.items] }));
     const fromCatIndex = next.findIndex((c) => c.id === activeData.categoryId);
     if (fromCatIndex < 0) return;
     const fromItems = next[fromCatIndex].items;
@@ -154,7 +174,7 @@ export function MenuStationSorter({
     if (fromItemIndex < 0) return;
     const [moved] = fromItems.splice(fromItemIndex, 1);
 
-    let toCategoryId =
+    const toCategoryId =
       overData.type === "item"
         ? overData.categoryId
         : overData.type === "category" || overData.type === "category-drop"
@@ -163,7 +183,6 @@ export function MenuStationSorter({
 
     const toCatIndex = next.findIndex((c) => c.id === toCategoryId);
     if (toCatIndex < 0) {
-      // restore
       fromItems.splice(fromItemIndex, 0, moved);
       return;
     }
@@ -205,6 +224,9 @@ export function MenuStationSorter({
               station={station}
               busy={busy}
               onRemoveItem={onRemoveItem}
+              onUpdateCategory={onUpdateCategory}
+              onToggleAvailability={onToggleAvailability}
+              onSaveChoices={onSaveChoices}
             />
           ))}
         </ul>
@@ -223,11 +245,20 @@ function SortableCategory({
   station,
   busy,
   onRemoveItem,
+  onUpdateCategory,
+  onToggleAvailability,
+  onSaveChoices,
 }: {
   category: KitchenMenuCategory;
   station: MenuStationId;
   busy: boolean;
   onRemoveItem: (id: string, name: string) => void;
+  onUpdateCategory?: (
+    id: string,
+    patch: { station?: string; defaultCourse?: string | null }
+  ) => void;
+  onToggleAvailability?: (id: string, available: boolean) => void;
+  onSaveChoices?: (id: string, choices: KitchenMenuChoiceGroup[] | null) => void;
 }) {
   const {
     attributes,
@@ -270,6 +301,49 @@ function SortableCategory({
           ⋮⋮
         </button>
         <strong>{category.name}</strong>
+        {onUpdateCategory && (
+          <div className="kt-cat-meta-edits">
+            <label className="kt-inline-field">
+              <span>Station</span>
+              <select
+                className="kt-input kt-input-compact"
+                value={category.station}
+                disabled={busy}
+                onChange={(e) =>
+                  onUpdateCategory(category.id, { station: e.target.value })
+                }
+              >
+                {MENU_STATIONS.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.label}
+                  </option>
+                ))}
+                {!MENU_STATIONS.some((s) => s.id === category.station) && (
+                  <option value={category.station}>{category.station}</option>
+                )}
+              </select>
+            </label>
+            <label className="kt-inline-field">
+              <span>Course</span>
+              <select
+                className="kt-input kt-input-compact"
+                value={category.defaultCourse ?? ""}
+                disabled={busy}
+                onChange={(e) =>
+                  onUpdateCategory(category.id, {
+                    defaultCourse: e.target.value || null,
+                  })
+                }
+              >
+                {DEFAULT_COURSES.map((c) => (
+                  <option key={c.value || "none"} value={c.value}>
+                    {c.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+        )}
       </div>
       <SortableContext items={itemIds} strategy={verticalListSortingStrategy}>
         <ul>
@@ -284,6 +358,8 @@ function SortableCategory({
                 station={station}
                 busy={busy}
                 onRemoveItem={onRemoveItem}
+                onToggleAvailability={onToggleAvailability}
+                onSaveChoices={onSaveChoices}
               />
             ))
           )}
@@ -314,12 +390,16 @@ function SortableItem({
   station,
   busy,
   onRemoveItem,
+  onToggleAvailability,
+  onSaveChoices,
 }: {
   item: KitchenMenuItem;
   categoryId: string;
   station: MenuStationId;
   busy: boolean;
   onRemoveItem: (id: string, name: string) => void;
+  onToggleAvailability?: (id: string, available: boolean) => void;
+  onSaveChoices?: (id: string, choices: KitchenMenuChoiceGroup[] | null) => void;
 }) {
   const {
     attributes,
@@ -344,30 +424,151 @@ function SortableItem({
     opacity: isDragging ? 0.45 : 1,
   };
 
+  const [editingChoices, setEditingChoices] = useState(false);
+  const [draft, setDraft] = useState<KitchenMenuChoiceGroup[]>(
+    () => item.choices ?? []
+  );
+
+  function openChoices() {
+    setDraft(
+      (item.choices ?? []).map((g) => ({
+        label: g.label,
+        required: g.required,
+        options: [...g.options],
+      }))
+    );
+    setEditingChoices(true);
+  }
+
   return (
     <li
       ref={setNodeRef}
       style={style}
       className={`kt-editor-item kt-sortable-item${isDragging ? " is-dragging" : ""}`}
     >
-      <button
-        type="button"
-        className="kt-drag-handle"
-        aria-label={`Drag ${item.name}`}
-        {...attributes}
-        {...listeners}
-      >
-        ⋮⋮
-      </button>
-      <span className="kt-sortable-item-name">{item.name}</span>
-      <button
-        type="button"
-        className="kt-btn kt-btn-ghost"
-        disabled={busy}
-        onClick={() => onRemoveItem(item.id, item.name)}
-      >
-        Remove
-      </button>
+      <div className="kt-sortable-item-row">
+        <button
+          type="button"
+          className="kt-drag-handle"
+          aria-label={`Drag ${item.name}`}
+          {...attributes}
+          {...listeners}
+        >
+          ⋮⋮
+        </button>
+        <span className="kt-sortable-item-name">{item.name}</span>
+        {onToggleAvailability && (
+          <button
+            type="button"
+            className={`kt-avail-toggle${item.available ? "" : " is-86"}`}
+            disabled={busy}
+            onClick={() => onToggleAvailability(item.id, !item.available)}
+          >
+            {item.available ? "Available" : "86’d"}
+          </button>
+        )}
+        {onSaveChoices && (
+          <button
+            type="button"
+            className="kt-btn kt-btn-ghost"
+            disabled={busy}
+            onClick={() => (editingChoices ? setEditingChoices(false) : openChoices())}
+          >
+            Choices
+          </button>
+        )}
+        <button
+          type="button"
+          className="kt-btn kt-btn-ghost"
+          disabled={busy}
+          onClick={() => onRemoveItem(item.id, item.name)}
+        >
+          Remove
+        </button>
+      </div>
+      {editingChoices && onSaveChoices && (
+        <div className="kt-choices-editor">
+          {draft.map((group, gi) => (
+            <div key={gi} className="kt-choice-group-edit">
+              <input
+                className="kt-input"
+                placeholder="Group label"
+                value={group.label}
+                onChange={(e) => {
+                  const next = [...draft];
+                  next[gi] = { ...group, label: e.target.value };
+                  setDraft(next);
+                }}
+              />
+              <label className="kt-radio">
+                <input
+                  type="checkbox"
+                  checked={group.required}
+                  onChange={(e) => {
+                    const next = [...draft];
+                    next[gi] = { ...group, required: e.target.checked };
+                    setDraft(next);
+                  }}
+                />
+                Required
+              </label>
+              <input
+                className="kt-input"
+                placeholder="Options (comma-separated)"
+                value={group.options.join(", ")}
+                onChange={(e) => {
+                  const options = e.target.value
+                    .split(",")
+                    .map((o) => o.trim())
+                    .filter(Boolean);
+                  const next = [...draft];
+                  next[gi] = { ...group, options };
+                  setDraft(next);
+                }}
+              />
+              <button
+                type="button"
+                className="kt-btn kt-btn-ghost"
+                onClick={() => setDraft(draft.filter((_, i) => i !== gi))}
+              >
+                Remove group
+              </button>
+            </div>
+          ))}
+          <div className="kt-editor-row">
+            <button
+              type="button"
+              className="kt-btn"
+              onClick={() =>
+                setDraft([
+                  ...draft,
+                  { label: "", required: false, options: [] },
+                ])
+              }
+            >
+              Add group
+            </button>
+            <button
+              type="button"
+              className="kt-btn kt-btn-fire"
+              disabled={busy}
+              onClick={() => {
+                const cleaned = draft
+                  .map((g) => ({
+                    label: g.label.trim(),
+                    required: g.required,
+                    options: g.options.map((o) => o.trim()).filter(Boolean),
+                  }))
+                  .filter((g) => g.label && g.options.length > 0);
+                onSaveChoices(item.id, cleaned.length ? cleaned : null);
+                setEditingChoices(false);
+              }}
+            >
+              Save choices
+            </button>
+          </div>
+        </div>
+      )}
     </li>
   );
 }

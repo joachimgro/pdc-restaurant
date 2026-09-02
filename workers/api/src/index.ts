@@ -70,6 +70,8 @@ import {
   handleMenuItemAvailability,
   handleParseMenuImage,
   handleReorderKitchenMenu,
+  handleUpdateMenuCategory,
+  handleUpdateMenuItem,
 } from "./routes/kitchen";
 import {
   handleFlagGuestThread,
@@ -459,6 +461,16 @@ export default {
         if (path === "/kitchen/menu/categories" && request.method === "POST") {
           return handleCreateMenuCategory(request, env);
         }
+        const menuCategoryMatch = path.match(
+          /^\/kitchen\/menu\/categories\/([^/]+)$/
+        );
+        if (menuCategoryMatch && request.method === "PATCH") {
+          return handleUpdateMenuCategory(
+            request,
+            env,
+            menuCategoryMatch[1]
+          );
+        }
         if (path === "/kitchen/menu/items" && request.method === "POST") {
           return handleCreateMenuItem(request, env);
         }
@@ -473,6 +485,9 @@ export default {
           );
         }
         const menuItemMatch = path.match(/^\/kitchen\/menu\/items\/([^/]+)$/);
+        if (menuItemMatch && request.method === "PATCH") {
+          return handleUpdateMenuItem(request, env, menuItemMatch[1]);
+        }
         if (menuItemMatch && request.method === "DELETE") {
           return handleDeleteMenuItem(request, env, menuItemMatch[1]);
         }
