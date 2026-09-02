@@ -37,6 +37,56 @@ const MODES: { id: KitchenMode; label: string; hint: string }[] = [
 const AGE_WARN_MS = 8 * 60_000;
 const AGE_LATE_MS = 15 * 60_000;
 
+const SERVE_MODE_LABELS: Record<string, string> = {
+  courses: "In courses",
+  as_it_comes: "As it comes",
+  all_together: "All together",
+};
+
+const COURSE_ORDER = ["starter", "main", "dessert"] as const;
+
+function serveModeLabel(mode: string | null | undefined): string | null {
+  if (!mode) return null;
+  return SERVE_MODE_LABELS[mode] ?? mode;
+}
+
+function groupTicketItemsByCourse(
+  items: KitchenTicket["items"]
+): { course: string | null; label: string | null; items: KitchenTicket["items"] }[] {
+  const buckets = new Map<string, KitchenTicket["items"]>();
+  for (const item of items) {
+    const key = item.course ?? "";
+    const list = buckets.get(key) ?? [];
+    list.push(item);
+    buckets.set(key, list);
+  }
+  const groups: {
+    course: string | null;
+    label: string | null;
+    items: KitchenTicket["items"];
+  }[] = [];
+  for (const course of COURSE_ORDER) {
+    const list = buckets.get(course);
+    if (list?.length) {
+      groups.push({
+        course,
+        label: course.toUpperCase(),
+        items: list,
+      });
+      buckets.delete(course);
+    }
+  }
+  for (const [key, list] of buckets) {
+    if (!list.length) continue;
+    groups.push({
+      course: key || null,
+      label: key ? key.toUpperCase() : null,
+      items: list,
+    });
+  }
+  return groups;
+}
+
 function ticketAgeMs(ticket: KitchenTicket, now: number): number {
   const start = Date.parse(ticket.startedAt ?? ticket.createdAt);
   if (Number.isNaN(start)) return 0;
@@ -1045,12 +1095,12 @@ function TicketBoard({
           {tickets.map((t) => {
             const age = ticketAgeMs(t, now);
             const band = ageBand(age);
-            const notes = [
-              t.notes,
-              ...t.items.map((i) => i.notes).filter(Boolean),
-            ]
-              .filter(Boolean)
-              .join(" · ");
+            const modeLabel = serveModeLabel(t.serveMode);
+            const isBar = normalizeStation(t.station) === "bar";
+            const courseGroups = groupTicketItemsByCourse(t.items);
+            const showCourseHeaders =
+              courseGroups.length > 1 ||
+              courseGroups.some((g) => g.course != null);
             return (
               <article
                 key={t.id}
@@ -1064,22 +1114,44 @@ function TicketBoard({
                   aria-label={`${bumpLabel(t)} — table ${t.tableLabel ?? "walk-in"}`}
                 >
                   <header className="kt-ticket-head">
-                    <span className="kt-ticket-table">
-                      {t.tableLabel ? `T${t.tableLabel}` : "WALK"}
+                    <span className="kt-ticket-table-wrap">
+                      <span className="kt-ticket-table">
+                        {t.tableLabel ? `T${t.tableLabel}` : "WALK"}
+                      </span>
+                      {modeLabel && (
+                        <span className="kt-serve-badge">{modeLabel}</span>
+                      )}
+                      {isBar && (
+                        <span className="kt-station-chip-inline">Bar</span>
+                      )}
                     </span>
                     <span className={`kt-ticket-timer fp-num kt-timer-${band}`}>
                       {formatElapsed(age)}
                     </span>
                   </header>
                   <ul className="kt-ticket-items">
-                    {t.items.map((item) => (
-                      <li key={item.id}>
-                        <span className="kt-qty fp-num">{item.qty}</span>
-                        <span className="kt-item-name">{item.name}</span>
+                    {courseGroups.map((group, gi) => (
+                      <li key={`${t.id}-g-${group.course ?? "x"}-${gi}`} className="kt-course-group">
+                        {showCourseHeaders && group.label && (
+                          <div className="kt-course-divider">{group.label}</div>
+                        )}
+                        <ul className="kt-course-items">
+                          {group.items.map((item) => (
+                            <li key={item.id}>
+                              <span className="kt-qty fp-num">{item.qty}</span>
+                              <span className="kt-item-body">
+                                <span className="kt-item-name">{item.name}</span>
+                                {item.notes ? (
+                                  <span className="kt-item-notes">{item.notes}</span>
+                                ) : null}
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
                       </li>
                     ))}
                   </ul>
-                  {notes && <p className="kt-ticket-mods">{notes}</p>}
+                  {t.notes && <p className="kt-ticket-mods">{t.notes}</p>}
                   <span className="kt-bump-cue">{bumpLabel(t)}</span>
                 </button>
                 <button

@@ -374,9 +374,77 @@
   line-height: 1;
 }
 
+.kt-ticket-table-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.kt-serve-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: #2a2e38;
+  color: #c8ccd6;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.kt-station-chip-inline {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: #1f2a3a;
+  color: #8eb8ff;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
 .kt-ticket-timer {
   font-size: 22px;
   font-weight: 700;
+}
+
+.kt-course-divider {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #9aa0ad;
+  margin-top: 4px;
+}
+
+.kt-course-items {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.kt-item-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.kt-item-notes {
+  color: #ff6b6b;
+  font-size: 20px;
+  font-weight: 650;
+  line-height: 1.2;
 }
 
 .kt-timer-fresh { color: #8eb8ff; }
@@ -392,7 +460,13 @@
   gap: 8px;
 }
 
-.kt-ticket-items li {
+.kt-ticket-items > .kt-course-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.kt-course-items li {
   display: flex;
   gap: 10px;
   align-items: baseline;

@@ -74,11 +74,17 @@ export async function fetchAuthMe(): Promise<StaffUser | null> {
 }
 
 export async function requestMagicLink(
-  email: string
+  email: string,
+  next?: string
 ): Promise<{ devVerifyUrl?: string }> {
   return apiFetch("/auth/magic-link", {
     method: "POST",
-    body: JSON.stringify({ email }),
+    body: JSON.stringify({
+      email,
+      ...(next && next.startsWith("/") && !next.startsWith("//")
+        ? { next }
+        : {}),
+    }),
   });
 }
 

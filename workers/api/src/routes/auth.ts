@@ -38,10 +38,19 @@ function apiOrigin(request: Request): string {
   return `${url.protocol}//${url.host}`;
 }
 
+function safeNextPath(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  const next = raw.trim();
+  if (!next.startsWith("/") || next.startsWith("//")) return null;
+  if (next.includes("://")) return null;
+  return next;
+}
+
 async function sendMagicLinkIfAllowed(
   request: Request,
   env: Env,
-  email: string
+  email: string,
+  next?: string | null
 ): Promise<Response> {
   const allowed = await canRequestMagicLink(env, email);
   if (!allowed) {
@@ -50,7 +59,11 @@ async function sendMagicLinkIfAllowed(
   }
 
   const token = await createMagicLinkToken(env, email);
-  const verifyUrl = `${apiOrigin(request)}/auth/verify?token=${encodeURIComponent(token)}`;
+  const safeNext = safeNextPath(next);
+  let verifyUrl = `${apiOrigin(request)}/auth/verify?token=${encodeURIComponent(token)}`;
+  if (safeNext) {
+    verifyUrl += `&next=${encodeURIComponent(safeNext)}`;
+  }
   const apiKey = env.RESEND_API_KEY?.trim();
   if (apiKey) {
     await sendMagicLinkEmail(env, email, verifyUrl);
@@ -75,9 +88,9 @@ export async function handleMagicLink(
   request: Request,
   env: Env
 ): Promise<Response> {
-  let body: { email?: unknown };
+  let body: { email?: unknown; next?: unknown };
   try {
-    body = (await request.json()) as { email?: unknown };
+    body = (await request.json()) as { email?: unknown; next?: unknown };
   } catch {
     return jsonResponse(request, env, { error: "Invalid JSON" }, 400);
   }
@@ -88,8 +101,10 @@ export async function handleMagicLink(
     return jsonResponse(request, env, { error: "Valid email required" }, 400);
   }
 
+  const next = typeof body.next === "string" ? body.next : null;
+
   try {
-    return await sendMagicLinkIfAllowed(request, env, email);
+    return await sendMagicLinkIfAllowed(request, env, email, next);
   } catch (e) {
     console.error("Magic link send failed", e);
     return jsonResponse(
@@ -125,11 +140,15 @@ export async function handleVerify(
   const maxAgeSec = Math.floor(SESSION_TTL_MS / 1000);
   const secure = new URL(request.url).protocol === "https:";
   const cookieDomain = cookieDomainFromWebOrigin(webOrigin(env));
+  const next = safeNextPath(url.searchParams.get("next"));
+  const location = next
+    ? `${webOrigin(env)}${next}`
+    : `${webOrigin(env)}/inbox`;
 
   return new Response(null, {
     status: 302,
     headers: {
-      Location: `${webOrigin(env)}/inbox`,
+      Location: location,
       "Set-Cookie": sessionCookieHeader(
         sessionToken,
         maxAgeSec,

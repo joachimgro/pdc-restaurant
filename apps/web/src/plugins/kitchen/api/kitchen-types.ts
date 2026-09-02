@@ -1,3 +1,9 @@
+export type KitchenMenuChoiceGroup = {
+  label: string;
+  required: boolean;
+  options: string[];
+};
+
 export type KitchenMenuItem = {
   id: string;
   categoryId: string;
@@ -6,6 +12,8 @@ export type KitchenMenuItem = {
   pricePence: number;
   station: string;
   sortOrder: number;
+  available: boolean;
+  choices: KitchenMenuChoiceGroup[] | null;
 };
 
 export type KitchenMenuCategory = {
@@ -13,6 +21,7 @@ export type KitchenMenuCategory = {
   name: string;
   station: string;
   sortOrder: number;
+  defaultCourse: string | null;
   items: KitchenMenuItem[];
 };
 
@@ -23,6 +32,7 @@ export type KitchenTicketItem = {
   qty: number;
   notes: string | null;
   status: string;
+  course: string | null;
 };
 
 export type KitchenTicket = {
@@ -33,6 +43,9 @@ export type KitchenTicket = {
   station: string;
   status: string;
   notes: string | null;
+  serveMode: string | null;
+  covers: number | null;
+  orderKey: string | null;
   startedAt: string | null;
   readyAt: string | null;
   servedAt: string | null;

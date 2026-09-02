@@ -22,6 +22,7 @@ import {
   parseSettingsArea,
   consoleViewFromParam,
 } from "./app-section";
+import { PostLoginRedirect } from "@/components/PostLoginRedirect";
 
 type InboxMode = "leads" | "guests";
 
@@ -136,6 +137,7 @@ export function InboxPage() {
 
   return (
     <>
+      <PostLoginRedirect />
       <div className="inbox-shell">
         <div
           className={`inbox-app${showProfile ? "" : " inbox-app--profile-hidden"}`}

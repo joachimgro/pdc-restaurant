@@ -2,9 +2,11 @@
 
 import { useEffect, useState } from "react";
 import { requestMagicLink } from "@/lib/api/client";
+import { storePostLoginNext } from "@/components/PostLoginRedirect";
 
 export function LoginForm() {
   const [errorParam, setErrorParam] = useState<string | null>(null);
+  const [nextPath, setNextPath] = useState<string | null>(null);
   const [email, setEmail] = useState("");
   const [status, setStatus] = useState<
     "idle" | "sending" | "sent" | "error"
@@ -15,7 +17,13 @@ export function LoginForm() {
   // Avoid useSearchParams() Suspense — on iPad a stalled RSC/hydration left
   // the page stuck on the "Loading…" fallback forever.
   useEffect(() => {
-    setErrorParam(new URLSearchParams(window.location.search).get("error"));
+    const params = new URLSearchParams(window.location.search);
+    setErrorParam(params.get("error"));
+    const next = params.get("next");
+    if (next && next.startsWith("/") && !next.startsWith("//")) {
+      setNextPath(next);
+      storePostLoginNext(next);
+    }
   }, []);
 
   const errorMessages: Record<string, string> = {
@@ -34,11 +42,16 @@ export function LoginForm() {
     setMessage(null);
     setDevLink(null);
     try {
-      const result = await requestMagicLink(trimmed);
+      const result = await requestMagicLink(trimmed, nextPath ?? undefined);
       setStatus("sent");
       setMessage("Check your email for a sign-in link.");
       if (result.devVerifyUrl) {
-        setDevLink(result.devVerifyUrl);
+        let url = result.devVerifyUrl;
+        if (nextPath && !url.includes("next=")) {
+          const sep = url.includes("?") ? "&" : "?";
+          url = `${url}${sep}next=${encodeURIComponent(nextPath)}`;
+        }
+        setDevLink(url);
         setMessage("Dev mode: use the link below to sign in.");
       }
     } catch (err) {

@@ -192,4 +192,39 @@ export function updateKitchenTicketStatus(
   });
 }
 
+export function createKitchenOrder(input: {
+  orderKey: string;
+  tableLabel: string;
+  covers?: number | null;
+  serveMode: "courses" | "as_it_comes" | "all_together";
+  reservationId?: string | null;
+  notes?: string | null;
+  items: {
+    menuItemId: string;
+    qty: number;
+    course?: string | null;
+    notes?: string | null;
+  }[];
+}): Promise<
+  ApiResult<{
+    tickets: { id: string; station: string; itemCount: number }[];
+    replay: boolean;
+  }>
+> {
+  return call("/kitchen/orders", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function setMenuItemAvailability(
+  id: string,
+  available: boolean
+): Promise<ApiResult<{ item: { id: string; available: boolean } }>> {
+  return call(`/kitchen/menu/items/${id}/availability`, {
+    method: "PATCH",
+    body: JSON.stringify({ available }),
+  });
+}
+
 export type { KitchenMenuCategory, KitchenTicket };
