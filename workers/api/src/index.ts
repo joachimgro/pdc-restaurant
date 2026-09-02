@@ -58,6 +58,7 @@ import {
 } from "./routes/reservations";
 import { handleGetServiceStats } from "./routes/stats";
 import {
+  handleCreateKitchenOrder,
   handleCreateKitchenTicket,
   handleCreateMenuCategory,
   handleCreateMenuItem,
@@ -66,6 +67,7 @@ import {
   handleImportKitchenMenu,
   handleKitchenTicketStatus,
   handleListKitchenTickets,
+  handleMenuItemAvailability,
   handleParseMenuImage,
   handleReorderKitchenMenu,
 } from "./routes/kitchen";
@@ -460,9 +462,23 @@ export default {
         if (path === "/kitchen/menu/items" && request.method === "POST") {
           return handleCreateMenuItem(request, env);
         }
+        const menuItemAvailMatch = path.match(
+          /^\/kitchen\/menu\/items\/([^/]+)\/availability$/
+        );
+        if (menuItemAvailMatch && request.method === "PATCH") {
+          return handleMenuItemAvailability(
+            request,
+            env,
+            menuItemAvailMatch[1]
+          );
+        }
         const menuItemMatch = path.match(/^\/kitchen\/menu\/items\/([^/]+)$/);
         if (menuItemMatch && request.method === "DELETE") {
           return handleDeleteMenuItem(request, env, menuItemMatch[1]);
+        }
+
+        if (path === "/kitchen/orders" && request.method === "POST") {
+          return handleCreateKitchenOrder(request, env);
         }
 
         if (path === "/kitchen/tickets" && request.method === "GET") {

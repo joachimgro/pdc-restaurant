@@ -3,6 +3,7 @@ import { jsonResponse } from "../cors";
 import { getDefaultLocation } from "../db/locations";
 import { getStaffSession, type StaffSession } from "../auth/session";
 import {
+  createKitchenOrder,
   createKitchenTicket,
   createMenuCategory,
   createMenuItem,
@@ -11,6 +12,7 @@ import {
   importKitchenMenu,
   listKitchenTickets,
   reorderKitchenMenu,
+  setMenuItemAvailability,
   updateKitchenTicketStatus,
   type KitchenTicketStatus,
 } from "../plugins/kitchen/db";
@@ -51,6 +53,30 @@ const CreateItemSchema = z.object({
   pricePence: z.number().int().min(0).optional(),
   station: z.string().min(1).max(40).optional(),
   description: z.string().max(500).nullable().optional(),
+  choices: z.unknown().optional(),
+});
+
+const CreateOrderSchema = z.object({
+  orderKey: z.string().min(8).max(80),
+  tableLabel: z.string().min(1).max(40),
+  covers: z.number().int().positive().nullable().optional(),
+  serveMode: z.enum(["courses", "as_it_comes", "all_together"]),
+  reservationId: z.string().nullable().optional(),
+  notes: z.string().nullable().optional(),
+  items: z
+    .array(
+      z.object({
+        menuItemId: z.string().min(1),
+        qty: z.number().int().positive(),
+        course: z.enum(["starter", "main", "dessert"]).nullable().optional(),
+        notes: z.string().nullable().optional(),
+      })
+    )
+    .min(1),
+});
+
+const AvailabilitySchema = z.object({
+  available: z.boolean(),
 });
 
 const ImportMenuSchema = z.object({
@@ -188,9 +214,11 @@ export async function handleParseMenuImage(
         file &&
         typeof file === "object" &&
         "arrayBuffer" in file &&
-        typeof (file as Blob).arrayBuffer === "function"
+        typeof (file as { arrayBuffer: unknown }).arrayBuffer === "function"
       ) {
-        bytes = new Uint8Array(await (file as Blob).arrayBuffer());
+        bytes = new Uint8Array(
+          await (file as Blob).arrayBuffer()
+        );
       }
     } else {
       const body = await readJson(request);
@@ -393,7 +421,125 @@ export async function handleCreateMenuItem(
   if (!item) {
     return kitchenError(request, env, 404, "NOT_FOUND", "Category not found");
   }
+  if ("error" in item) {
+    return kitchenError(
+      request,
+      env,
+      400,
+      "INVALID_CHOICES",
+      item.message
+    );
+  }
   return jsonResponse(request, env, { item }, 201);
+}
+
+/** PATCH /kitchen/menu/items/:id/availability */
+export async function handleMenuItemAvailability(
+  request: Request,
+  env: Env,
+  itemId: string
+): Promise<Response> {
+  const session = await requireSession(request, env);
+  if (session instanceof Response) return session;
+
+  const locationId = await resolveLocationId(request, env);
+  if (!locationId) {
+    return kitchenError(request, env, 404, "NO_LOCATION", "No location configured");
+  }
+
+  const body = await readJson(request);
+  if (body === INVALID) {
+    return kitchenError(request, env, 400, "INVALID_JSON", "Invalid JSON");
+  }
+  const parsed = AvailabilitySchema.safeParse(body);
+  if (!parsed.success) {
+    return kitchenError(
+      request,
+      env,
+      400,
+      "INVALID_AVAILABILITY",
+      "available must be boolean",
+      parsed.error.issues
+    );
+  }
+
+  const item = await setMenuItemAvailability(
+    env,
+    locationId,
+    itemId,
+    parsed.data.available
+  );
+  if (!item) {
+    return kitchenError(request, env, 404, "NOT_FOUND", "Menu item not found");
+  }
+  return jsonResponse(request, env, { item });
+}
+
+/** POST /kitchen/orders — batch tickets by station with idempotent orderKey */
+export async function handleCreateKitchenOrder(
+  request: Request,
+  env: Env
+): Promise<Response> {
+  const session = await requireSession(request, env);
+  if (session instanceof Response) return session;
+
+  const locationId = await resolveLocationId(request, env);
+  if (!locationId) {
+    return kitchenError(request, env, 404, "NO_LOCATION", "No location configured");
+  }
+
+  const body = await readJson(request);
+  if (body === INVALID) {
+    return kitchenError(request, env, 400, "INVALID_JSON", "Invalid JSON");
+  }
+
+  const parsed = CreateOrderSchema.safeParse(body);
+  if (!parsed.success) {
+    return kitchenError(
+      request,
+      env,
+      400,
+      "INVALID_ORDER",
+      "Order failed validation",
+      parsed.error.issues
+    );
+  }
+
+  const result = await createKitchenOrder(env, locationId, {
+    ...parsed.data,
+    createdByStaffId: session.row.id,
+  });
+
+  if (!result.ok) {
+    if (result.code === "ITEM_UNAVAILABLE") {
+      return kitchenError(
+        request,
+        env,
+        409,
+        "ITEM_UNAVAILABLE",
+        "One or more items are unavailable",
+        { itemIds: result.itemIds }
+      );
+    }
+    if (result.code === "INVALID_MENU_ITEM") {
+      return kitchenError(
+        request,
+        env,
+        400,
+        "INVALID_MENU_ITEM",
+        "One or more menu items were not found",
+        { itemIds: result.itemIds }
+      );
+    }
+    return kitchenError(request, env, 400, "EMPTY_ORDER", "Order has no items");
+  }
+
+  return jsonResponse(
+    request,
+    env,
+    { tickets: result.tickets, replay: result.replay },
+    result.replay ? 200 : 201
+  );
 }
 
 /** DELETE /kitchen/menu/items/:id */
