@@ -43,6 +43,18 @@ fi
 echo "==> Generating build-info.ts..."
 pnpm run gen-build-info
 
+# Keep wrangler EXPECTED_GIT_SHA in lockstep with build-info so /health deploy_sha pins.
+GIT_SHA=$(node -e "const m=require('fs').readFileSync('src/build-info.ts','utf8'); const x=m.match(/GIT_SHA = \"([^\"]+)\"/); process.stdout.write(x?x[1]:'')")
+if [ -n "$GIT_SHA" ]; then
+  echo "==> Pinning EXPECTED_GIT_SHA=$GIT_SHA in wrangler.toml"
+  if grep -q '^EXPECTED_GIT_SHA' wrangler.toml; then
+    sed -i.bak "s/^EXPECTED_GIT_SHA = \".*\"/EXPECTED_GIT_SHA = \"$GIT_SHA\"/" wrangler.toml
+    rm -f wrangler.toml.bak
+  else
+    printf '\nEXPECTED_GIT_SHA = "%s"\n' "$GIT_SHA" >> wrangler.toml
+  fi
+fi
+
 echo "==> Deploying Worker..."
 DEPLOY_OUTPUT=$(pnpm exec wrangler deploy 2>&1)
 echo "$DEPLOY_OUTPUT"

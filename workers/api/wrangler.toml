@@ -42,6 +42,9 @@ GUEST_BOOKING_ORIGIN = "https://kitchen.phiof.digital"
 # SMS off while we pilot email-only confirmations/reminders via Resend
 ENABLE_BOOKING_SMS = "true"
 
+# Pin /health deploy_sha to the stamped build-info GIT_SHA (updated by deploy-remote.sh).
+EXPECTED_GIT_SHA = "74fdd2f"
+
 # Secrets (set via wrangler secret put — same values as pdc-phiof where shared):
 # RESEND_API_KEY, RESEND_WEBHOOK_SECRET (optional), TELNYX_API_KEY, TELNYX_FROM_NUMBER,
 # TELNYX_WEBHOOK_PUBLIC_KEY, ENCRYPTION_KEY, TURNSTILE_SECRET_KEY (optional)

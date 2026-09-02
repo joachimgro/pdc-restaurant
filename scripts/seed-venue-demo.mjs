@@ -175,8 +175,8 @@ const COMBINATIONS = [
 
 // ── Service periods ─────────────────────────────────────────────────────────
 
-const LUNCH_DAYS = ["wed", "thu", "fri", "sat", "sun"];
-const DINNER_DAYS = ["tue", "wed", "thu", "fri", "sat"];
+const LUNCH_DAYS = ["mon", "wed", "thu", "fri", "sat", "sun"];
+const DINNER_DAYS = ["mon", "tue", "wed", "thu", "fri", "sat"];
 
 const PERIODS = [];
 for (const day of LUNCH_DAYS) {

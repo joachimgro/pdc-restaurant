@@ -30,6 +30,7 @@ export default defineConfig(async () => {
             CORS_ORIGIN: "http://localhost:3000",
             ENABLE_SERVICE: "true",
             ENABLE_WAITLIST: "true",
+            ENABLE_KITCHEN: "true",
             ENABLE_DEMO_TOOLS: "true",
             ADMIN_SEED_SECRET: "test-secret",
             TEST_MIGRATIONS: migrations,
