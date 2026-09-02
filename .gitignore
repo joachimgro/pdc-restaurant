@@ -8,6 +8,8 @@ dist
 .DS_Store
 .env
 .env*.local
+.env.production
+apps/web/.env.production
 *.tsbuildinfo
 
 # Local dev wrangler config (LAN + local D1). Never committed.

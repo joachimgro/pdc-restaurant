@@ -306,8 +306,14 @@ body:has(.book-shell) {
 }
 
 .book-turnstile {
-  margin: 8px 0 4px;
+  margin: 12px 0 8px;
   min-height: 65px;
+  width: 100%;
+  overflow: visible;
+}
+
+.book-turnstile iframe {
+  max-width: 100%;
 }
 
 .book-confirmed .book-cta {

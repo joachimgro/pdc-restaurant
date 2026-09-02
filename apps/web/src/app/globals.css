@@ -85,6 +85,9 @@ html,
 body {
   height: 100%;
   min-height: 100%;
+  min-height: 100dvh;
+  min-height: -webkit-fill-available;
+  background: var(--bg-app);
 }
 
 body {
@@ -96,6 +99,28 @@ body {
   text-rendering: optimizeLegibility;
   line-height: 1.5;
   letter-spacing: -0.005em;
+  overscroll-behavior: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* iPad / iPhone home-screen PWA — edge-to-edge, no Safari chrome */
+@media (display-mode: standalone), (display-mode: fullscreen) {
+  html,
+  body {
+    background: var(--bg-app);
+  }
+
+  .inbox-shell {
+    /* Cover the full screen including safe areas; panels pad themselves. */
+    padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px)
+      env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
+  }
+
+  .inbox-app {
+    /* Drop the floating “card frame” so the console feels native on iPad. */
+    padding: 0;
+    gap: 0;
+  }
 }
 
 /* ─── Avatars ────────────────────────────────────────────────────────── */

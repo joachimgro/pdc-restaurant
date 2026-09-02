@@ -10,7 +10,7 @@
     "db:seed:local": "pnpm --filter @lead-intake/api db:seed:local",
     "db:seed:remote": "pnpm --filter @lead-intake/api db:seed:remote",
     "deploy:remote": "bash scripts/deploy-remote.sh",
-    "deploy:web": "pnpm --filter @lead-intake/web deploy",
+    "deploy:web": "pnpm --filter @lead-intake/web run deploy",
     "setup:remote": "pnpm install && pnpm deploy:remote && pnpm build"
   },
   "devDependencies": {
