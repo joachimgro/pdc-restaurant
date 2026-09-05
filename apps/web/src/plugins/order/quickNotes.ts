@@ -3,5 +3,5 @@ export const QUICK_NOTES = [
   "No sauce",
   "Allergy",
   "On the side",
-  "Custom",
+  "Custom"
 ] as const;
