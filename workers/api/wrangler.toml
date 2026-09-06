@@ -45,7 +45,7 @@ GUEST_BOOKING_ORIGIN = "https://kitchen.phiof.digital"
 ENABLE_BOOKING_SMS = "true"
 
 # Pin /health deploy_sha to the stamped build-info GIT_SHA (updated by deploy-remote.sh).
-EXPECTED_GIT_SHA = "aa1156f"
+EXPECTED_GIT_SHA = "83c5610"
 
 # Secrets (set via wrangler secret put — same values as pdc-phiof where shared):
 # RESEND_API_KEY, RESEND_WEBHOOK_SECRET (optional), TELNYX_API_KEY, TELNYX_FROM_NUMBER,
