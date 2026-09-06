@@ -32,6 +32,10 @@ export interface Env {
   /** Set to "true" to use template stub instead of Workers AI */
   AI_DISABLED?: string;
   AI_EMBED_MODEL?: string;
+  /** Vision model for kitchen menu photo import (falls back across a short list). */
+  AI_VISION_MODEL?: string;
+  /** Text model that normalises a menu transcription into import JSON. */
+  AI_MENU_JUDGE_MODEL?: string;
   TELNYX_API_KEY?: string;
   /** E.164 from-number for outbound booking SMS (or use messaging profile). */
   TELNYX_FROM_NUMBER?: string;

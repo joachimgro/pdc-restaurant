@@ -250,6 +250,10 @@ WHERE organization_id = ${q(ORG_ID)}
   for (const item of cat.items ?? []) {
     const itemId = stableId("fnl-item", LOCATION_ID, cat.name, item.name);
     const price = Math.max(0, Math.round(item.price_pence ?? 0));
+    const description =
+      typeof item.description === "string" && item.description.trim()
+        ? item.description.trim()
+        : null;
     const choices =
       item.choices == null ? null : JSON.stringify(item.choices);
     const itemStation = item.station || station;
@@ -260,12 +264,13 @@ WHERE organization_id = ${q(ORG_ID)}
   unavailable_at, created_at, updated_at
 ) VALUES (
   ${q(itemId)}, ${q(ORG_ID)}, ${q(LOCATION_ID)}, ${q(catId)}, ${q(item.name)},
-  NULL, ${price}, ${q(itemStation)}, ${itemSort}, 1, 1, ${q(choices)},
+  ${q(description)}, ${price}, ${q(itemStation)}, ${itemSort}, 1, 1, ${q(choices)},
   NULL, ${q(nowIso)}, ${q(nowIso)}
 )
 ON CONFLICT(id) DO UPDATE SET
   category_id = excluded.category_id,
   name = excluded.name,
+  description = excluded.description,
   price_pence = excluded.price_pence,
   station = excluded.station,
   sort_order = excluded.sort_order,
@@ -280,6 +285,7 @@ ON CONFLICT(id) DO UPDATE SET
     statements.push(
       `UPDATE menu_items
 SET category_id = ${q(catId)},
+    description = ${q(description)},
     price_pence = ${price},
     station = ${q(itemStation)},
     sort_order = ${itemSort},

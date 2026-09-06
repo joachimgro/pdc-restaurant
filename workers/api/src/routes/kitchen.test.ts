@@ -345,6 +345,51 @@ describe("kitchen orders (trial)", () => {
     expect(ticket?.items.map((i) => i.course)).toEqual(["starter", "main"]);
   });
 
+  it("lists ticket history newest-first and hides served from the active board", async () => {
+    const created = await call(`/kitchen/tickets?locationId=${LOCATION_ID}`, {
+      method: "POST",
+      token,
+      body: JSON.stringify({
+        station: "restaurant",
+        tableLabel: "12",
+        items: [{ menuItemId: "item-burger", qty: 1 }],
+      }),
+    });
+    const { id } = (await created.json()) as { id: string };
+    await call(`/kitchen/tickets/${id}/status?locationId=${LOCATION_ID}`, {
+      method: "POST",
+      token,
+      body: JSON.stringify({ status: "ready" }),
+    });
+    await call(`/kitchen/tickets/${id}/status?locationId=${LOCATION_ID}`, {
+      method: "POST",
+      token,
+      body: JSON.stringify({ status: "served" }),
+    });
+
+    const today = new Date().toISOString().slice(0, 10);
+    const hist = await call(
+      `/kitchen/tickets?locationId=${LOCATION_ID}&from=${today}&to=${today}&order=desc&limit=50&table=12`,
+      { token }
+    );
+    expect(hist.status).toBe(200);
+    const body = (await hist.json()) as {
+      total: number;
+      tickets: { tableLabel: string; status: string; readyAt: string | null }[];
+    };
+    expect(body.total).toBeGreaterThanOrEqual(1);
+    expect(body.tickets[0]?.tableLabel).toBe("12");
+    expect(body.tickets[0]?.status).toBe("served");
+    expect(body.tickets[0]?.readyAt).toBeTruthy();
+
+    const board = await call(
+      `/kitchen/tickets?locationId=${LOCATION_ID}&active=1`,
+      { token }
+    );
+    const open = (await board.json()) as { tickets: { id: string; status: string }[] };
+    expect(open.tickets.some((t) => t.id === id)).toBe(false);
+  });
+
   it("rejects malformed choices on create", async () => {
     const res = await call(`/kitchen/menu/items?locationId=${LOCATION_ID}`, {
       method: "POST",

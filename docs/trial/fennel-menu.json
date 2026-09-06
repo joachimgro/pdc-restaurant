@@ -5,20 +5,71 @@
       "station": "kitchen",
       "default_course": "starter",
       "items": [
-        { "name": "Soup of the day", "price_pence": 750 },
-        { "name": "Chicken liver pâté", "price_pence": 850 },
-        { "name": "Prawn cocktail", "price_pence": 950 },
-        { "name": "Burrata & tomatoes", "price_pence": 1100 }
+        {
+          "name": "Breads",
+          "description": "olive oil, sherry vinegar",
+          "price_pence": 495
+        },
+        {
+          "name": "Mixed Mediterranean olives",
+          "price_pence": 495
+        },
+        {
+          "name": "Charcuterie plate",
+          "price_pence": 800
+        },
+        {
+          "name": "Boquerones",
+          "description": "marinated white anchovies",
+          "price_pence": 700
+        },
+        {
+          "name": "Patatas bravas",
+          "description": "aioli",
+          "price_pence": 600
+        },
+        {
+          "name": "Gambas pil pil",
+          "description": "guindilla salsa",
+          "price_pence": 800
+        },
+        {
+          "name": "Chorizo",
+          "description": "honey, red wine",
+          "price_pence": 800
+        },
+        {
+          "name": "Baked cheese bread",
+          "description": "muhammara, whipped feta",
+          "price_pence": 700
+        },
+        {
+          "name": "Padron peppers",
+          "description": "sea salt",
+          "price_pence": 700
+        }
       ]
     },
     {
-      "name": "Mains",
+      "name": "Sharing Board",
+      "station": "kitchen",
+      "default_course": "starter",
+      "items": [
+        {
+          "name": "Sharing board",
+          "description": "selection of breads, meats, cheese, olives and dips",
+          "price_pence": 2500
+        }
+      ]
+    },
+    {
+      "name": "Meats",
       "station": "kitchen",
       "default_course": "main",
       "items": [
         {
-          "name": "Ribeye 10oz",
-          "price_pence": 2850,
+          "name": "275 gram ribeye Palermo style",
+          "price_pence": 3600,
           "choices": [
             {
               "label": "Temperature",
@@ -34,8 +85,14 @@
           ]
         },
         {
-          "name": "Sirloin 8oz",
-          "price_pence": 2450,
+          "name": "Harissa lamb",
+          "description": "pomegranate, feta salad",
+          "price_pence": 3200
+        },
+        {
+          "name": "Steak frites",
+          "description": "green peppercorn sauce",
+          "price_pence": 2300,
           "choices": [
             {
               "label": "Temperature",
@@ -50,9 +107,57 @@
             }
           ]
         },
-        { "name": "Pan-seared salmon", "price_pence": 2200 },
-        { "name": "Roast chicken", "price_pence": 1750 },
-        { "name": "House burger", "price_pence": 1650 }
+        {
+          "name": "Roasted bone-in corn-fed chicken",
+          "description": "scorched leeks, mushrooms, cream, tarragon",
+          "price_pence": 2500
+        }
+      ]
+    },
+    {
+      "name": "Sides",
+      "station": "kitchen",
+      "default_course": null,
+      "items": [
+        {
+          "name": "Green beans",
+          "description": "sauce Vierge",
+          "price_pence": 500
+        },
+        {
+          "name": "Fennel and orange salad",
+          "price_pence": 500
+        },
+        {
+          "name": "Tomato, shallot, caper salad",
+          "price_pence": 500
+        },
+        {
+          "name": "Fries",
+          "price_pence": 500
+        },
+        {
+          "name": "Pangrattato fries",
+          "description": "Parmesan, chili, and truffle mayonnaise",
+          "price_pence": 700
+        }
+      ]
+    },
+    {
+      "name": "Vegetarian",
+      "station": "kitchen",
+      "default_course": "main",
+      "items": [
+        {
+          "name": "Aubergine parmigiano",
+          "description": "Parmesan, basil",
+          "price_pence": 1400
+        },
+        {
+          "name": "Burrata",
+          "description": "heritage tomato salad",
+          "price_pence": 1200
+        }
       ]
     },
     {
@@ -60,9 +165,21 @@
       "station": "kitchen",
       "default_course": "dessert",
       "items": [
-        { "name": "Sticky toffee pudding", "price_pence": 800 },
-        { "name": "Dark chocolate brownie", "price_pence": 750 },
-        { "name": "Affogato", "price_pence": 700 }
+        {
+          "name": "Crème Catalan",
+          "description": "boozy apricots",
+          "price_pence": 800
+        },
+        {
+          "name": "Basque cheesecake",
+          "description": "sherry pepper strawberries",
+          "price_pence": 800
+        },
+        {
+          "name": "Chocolate fondant",
+          "description": "clotted cream ice cream",
+          "price_pence": 800
+        }
       ]
     },
     {

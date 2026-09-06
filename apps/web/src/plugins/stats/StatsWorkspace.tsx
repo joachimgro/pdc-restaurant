@@ -1,6 +1,7 @@
 "use client";
 
 import { StatsView } from "@/plugins/service/console/StatsView";
+import { TicketHistory } from "./TicketHistory";
 import "@/plugins/service/console/console.css";
 import "./stats.css";
 
@@ -13,6 +14,7 @@ export function StatsWorkspace() {
     <div className="st-root" style={{ gridColumn: "2 / -1" }}>
       <div className="st-panel">
         <StatsView />
+        <TicketHistory />
       </div>
     </div>
   );

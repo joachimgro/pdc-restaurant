@@ -19,6 +19,7 @@ import {
 } from "./api";
 import { QUICK_NOTES } from "./quickNotes";
 import type { CourseId, ServeMode, TicketLine } from "./types";
+import { OrderFloorCanvas } from "./OrderFloorCanvas";
 import "./order.css";
 
 const COURSE_CYCLE: Array<CourseId | null> = [
@@ -66,10 +67,16 @@ function courseGroupId(course: string | null): CourseId | "other" {
 
 type ChoiceFlow = {
   item: KitchenMenuItem;
+  category: KitchenMenuCategory;
   groups: KitchenMenuChoiceGroup[];
-  index: number;
-  notesParts: string[];
+  picks: Array<string | null | undefined>;
 };
+
+const CAT_TONES = 8;
+
+function itemChoices(item: KitchenMenuItem): KitchenMenuChoiceGroup[] {
+  return item.choices?.filter((g) => g.options.length > 0) ?? [];
+}
 
 type NoteSheet = {
   lineKey: string;
@@ -96,7 +103,7 @@ export function OrderWorkspace() {
   const [serveMode, setServeMode] = useState<ServeMode>("courses");
   const [orderKey, setOrderKey] = useState<string | null>(null);
   const [activeCatId, setActiveCatId] = useState<string | null>(null);
-  const [expandedKey, setExpandedKey] = useState<string | null>(null);
+  const [menuQuery, setMenuQuery] = useState("");
   const [sentOpen, setSentOpen] = useState(false);
   const [overflowOpen, setOverflowOpen] = useState(false);
   const [sending, setSending] = useState(false);
@@ -118,17 +125,16 @@ export function OrderWorkspace() {
     const result = await fetchKitchenMenu();
     if (result.ok) {
       setMenu(result.data.categories);
-      setActiveCatId((prev) => {
-        if (prev && result.data.categories.some((c) => c.id === prev)) {
-          return prev;
-        }
-        return result.data.categories[0]?.id ?? null;
-      });
+      setActiveCatId((prev) =>
+        prev && result.data.categories.some((c) => c.id === prev) ? prev : null
+      );
     }
   }, []);
 
   const loadTickets = useCallback(async () => {
-    const result = await fetchKitchenTickets();
+    const result = await fetchKitchenTickets(undefined, undefined, {
+      active: true,
+    });
     if (result.ok) setTickets(result.data.tickets);
   }, []);
 
@@ -137,8 +143,9 @@ export function OrderWorkspace() {
     if (result.ok) {
       setFloor(result.data);
       setRoomId((prev) => {
-        if (prev && result.data.rooms.some((r) => r.id === prev)) return prev;
-        return result.data.rooms[0]?.id ?? null;
+        const active = result.data.rooms.filter((r) => r.isActive);
+        if (prev && active.some((r) => r.id === prev)) return prev;
+        return active[0]?.id ?? null;
       });
     }
   }, []);
@@ -221,6 +228,11 @@ export function OrderWorkspace() {
     [lines]
   );
 
+  const ticketTotal = useMemo(
+    () => lines.reduce((n, l) => n + l.pricePence * l.qty, 0),
+    [lines]
+  );
+
   const qtyByItem = useMemo(() => {
     const map = new Map<string, number>();
     for (const l of lines) {
@@ -242,6 +254,34 @@ export function OrderWorkspace() {
     [menu, activeCatId]
   );
 
+  const browsing = useMemo(() => {
+    const q = menuQuery.trim().toLowerCase();
+    if (q) {
+      return menu.flatMap((category) =>
+        category.items
+          .filter((item) => item.name.toLowerCase().includes(q))
+          .map((item) => ({ item, category }))
+      );
+    }
+    return (activeCategory?.items ?? []).map((item) => ({
+      item,
+      category: activeCategory!,
+    }));
+  }, [menu, menuQuery, activeCategory]);
+
+  const searching = menuQuery.trim().length > 0;
+  const inSection = Boolean(activeCategory) || searching;
+
+  const qtyByCategory = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const cat of menu) {
+      let n = 0;
+      for (const item of cat.items) n += qtyByItem.get(item.id) ?? 0;
+      if (n > 0) map.set(cat.id, n);
+    }
+    return map;
+  }, [menu, qtyByItem]);
+
   function showBanner(next: Banner, autoClearMs?: number) {
     if (bannerTimer.current) window.clearTimeout(bannerTimer.current);
     setBanner(next);
@@ -255,7 +295,8 @@ export function OrderWorkspace() {
     setCovers(null);
     setServeMode("courses");
     setOrderKey(null);
-    setExpandedKey(null);
+    setMenuQuery("");
+    setActiveCatId(null);
     setSentOpen(false);
     setChoiceFlow(null);
     setNoteSheet(null);
@@ -318,54 +359,57 @@ export function OrderWorkspace() {
 
   function onTapMenuItem(item: KitchenMenuItem, category: KitchenMenuCategory) {
     if (!item.available) return;
-    const choices = item.choices?.filter((g) => g.options.length > 0) ?? [];
+    const choices = itemChoices(item);
     if (choices.length > 0) {
       setChoiceFlow({
         item,
+        category,
         groups: choices,
-        index: 0,
-        notesParts: [],
+        picks: choices.map(() => undefined),
       });
       return;
     }
     addLine(item, category, "");
   }
 
-  function finishChoice(parts: string[]) {
-    if (!choiceFlow || !activeCategory) return;
-    const notes = parts.filter(Boolean).join(", ");
-    const cat =
-      menu.find((c) => c.id === choiceFlow.item.categoryId) ?? activeCategory;
-    addLine(choiceFlow.item, cat, notes);
+  function commitChoices(
+    item: KitchenMenuItem,
+    category: KitchenMenuCategory,
+    parts: Array<string | null | undefined>
+  ) {
+    const notes = parts.filter((p): p is string => Boolean(p)).join(", ");
+    addLine(item, category, notes);
     setChoiceFlow(null);
   }
 
-  function pickChoiceOption(option: string) {
-    if (!choiceFlow) return;
-    const nextParts = [...choiceFlow.notesParts, option];
-    if (choiceFlow.index + 1 >= choiceFlow.groups.length) {
-      finishChoice(nextParts);
-      return;
-    }
-    setChoiceFlow({
-      ...choiceFlow,
-      index: choiceFlow.index + 1,
-      notesParts: nextParts,
-    });
+  function requiredChoicesFilled(groups: KitchenMenuChoiceGroup[], picks: Array<string | null | undefined>) {
+    return groups.every((g, i) => !g.required || typeof picks[i] === "string");
   }
 
-  function skipChoice() {
+  function pickChoiceOption(groupIndex: number, option: string) {
     if (!choiceFlow) return;
-    const nextParts = [...choiceFlow.notesParts];
-    if (choiceFlow.index + 1 >= choiceFlow.groups.length) {
-      finishChoice(nextParts);
+    const next = [...choiceFlow.picks];
+    next[groupIndex] = option;
+    const requiredDone = requiredChoicesFilled(choiceFlow.groups, next);
+    if (requiredDone) {
+      commitChoices(choiceFlow.item, choiceFlow.category, next);
       return;
     }
-    setChoiceFlow({
-      ...choiceFlow,
-      index: choiceFlow.index + 1,
-      notesParts: nextParts,
-    });
+    setChoiceFlow({ ...choiceFlow, picks: next });
+  }
+
+  function skipChoiceGroup(groupIndex: number) {
+    if (!choiceFlow) return;
+    const group = choiceFlow.groups[groupIndex];
+    if (!group || group.required) return;
+    const next = [...choiceFlow.picks];
+    next[groupIndex] = null;
+    const requiredDone = requiredChoicesFilled(choiceFlow.groups, next);
+    if (requiredDone) {
+      commitChoices(choiceFlow.item, choiceFlow.category, next);
+      return;
+    }
+    setChoiceFlow({ ...choiceFlow, picks: next });
   }
 
   function updateLineQty(key: string, delta: number) {
@@ -375,11 +419,6 @@ export function OrderWorkspace() {
         .map((l) => (l.key === key ? { ...l, qty: l.qty + delta } : l))
         .filter((l) => l.qty > 0)
     );
-  }
-
-  function removeLine(key: string) {
-    setLines((prev) => prev.filter((l) => l.key !== key));
-    setExpandedKey(null);
   }
 
   function cycleLineCourse(key: string) {
@@ -512,7 +551,12 @@ export function OrderWorkspace() {
     );
   }
 
-  const choiceGroup = choiceFlow?.groups[choiceFlow.index] ?? null;
+  const courseLabel = (course: string | null) => {
+    if (course === "starter") return "Starter";
+    if (course === "main") return "Main";
+    if (course === "dessert") return "Dessert";
+    return "No course";
+  };
 
   return (
     <div className="od-root">
@@ -547,7 +591,7 @@ export function OrderWorkspace() {
             <div className="od-overflow-menu" role="menu">
               <a
                 className="od-overflow-item"
-                href="/inbox?view=kitchen"
+                href="/kitchen"
                 role="menuitem"
                 onClick={() => setOverflowOpen(false)}
               >
@@ -579,7 +623,9 @@ export function OrderWorkspace() {
       {screen === "tables" ? (
         <div className="od-tables">
           <div className="od-room-tabs" role="tablist" aria-label="Rooms">
-            {(floor?.rooms ?? []).map((room) => (
+            {(floor?.rooms ?? [])
+              .filter((room) => room.isActive)
+              .map((room) => (
               <button
                 key={room.id}
                 type="button"
@@ -592,35 +638,26 @@ export function OrderWorkspace() {
               </button>
             ))}
           </div>
-          <div className="od-table-grid">
-            {(activeRoom?.tables ?? [])
-              .filter((t) => t.isActive)
-              .map((table) => {
-                const open = openByTable.get(table.label);
-                return (
-                  <button
-                    key={table.id}
-                    type="button"
-                    className="od-table-tile"
-                    onClick={() => openTable(table.label)}
-                  >
-                    <span className="od-table-label">{table.label}</span>
-                    {open && open.count > 0 && (
-                      <span className="od-table-meta">
-                        <span className="od-table-dot" aria-hidden />
-                        {open.count}
-                      </span>
-                    )}
-                  </button>
-                );
-              })}
+          {activeRoom ? (
+            <div className="od-floor-stage">
+              <OrderFloorCanvas
+                key={activeRoom.id}
+                room={activeRoom}
+                openByTable={openByTable}
+                onSelect={openTable}
+              />
+            </div>
+          ) : (
+            <p className="od-empty">No rooms in the floor plan yet.</p>
+          )}
+          <div className="od-bar-row">
             <button
               type="button"
-              className="od-table-tile is-bar"
+              className="od-bar-btn"
               onClick={() => openTable("Bar")}
             >
               <span className="od-table-label">Bar</span>
-              {openByTable.get("Bar") && (
+              {openByTable.get("Bar") && openByTable.get("Bar")!.count > 0 && (
                 <span className="od-table-meta">
                   <span className="od-table-dot" aria-hidden />
                   {openByTable.get("Bar")!.count}
@@ -631,6 +668,204 @@ export function OrderWorkspace() {
         </div>
       ) : (
         <div className="od-order">
+          <section className="od-menu">
+            {choiceFlow ? (
+              <div className="od-mod" role="dialog" aria-label="Item options">
+                <div className="od-drill-bar">
+                  <button
+                    type="button"
+                    className="od-back"
+                    onClick={() => setChoiceFlow(null)}
+                  >
+                    ← Back
+                  </button>
+                  <div className="od-drill-copy">
+                    <span className="od-drill-title">{choiceFlow.item.name}</span>
+                    <span className="od-drill-hint">
+                      {choiceFlow.groups.length === 1
+                        ? "Tap to add"
+                        : "Pick each option — adds when ready"}
+                    </span>
+                  </div>
+                </div>
+                <div className="od-mod-body">
+                  {choiceFlow.groups.map((group, gi) => (
+                    <div key={`${group.label}-${gi}`} className="od-mod-group">
+                      <div className="od-mod-label">
+                        {group.label}
+                        {group.required ? (
+                          <span className="od-mod-req">Required</span>
+                        ) : (
+                          <span className="od-mod-opt">Optional</span>
+                        )}
+                      </div>
+                      <div className="od-mod-grid">
+                        {group.options.map((opt) => (
+                          <button
+                            key={opt}
+                            type="button"
+                            className={`od-mod-opt-btn${
+                              choiceFlow.picks[gi] === opt ? " is-on" : ""
+                            }`}
+                            onClick={() => pickChoiceOption(gi, opt)}
+                          >
+                            {opt}
+                          </button>
+                        ))}
+                        {!group.required && (
+                          <button
+                            type="button"
+                            className={`od-mod-opt-btn is-skip${
+                              choiceFlow.picks[gi] === null ? " is-on" : ""
+                            }`}
+                            onClick={() => skipChoiceGroup(gi)}
+                          >
+                            None
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <>
+                {inSection && (
+                  <div className="od-drill-bar">
+                    <button
+                      type="button"
+                      className="od-back"
+                      onClick={() => {
+                        if (searching) {
+                          setMenuQuery("");
+                          return;
+                        }
+                        setActiveCatId(null);
+                      }}
+                    >
+                      ← Back
+                    </button>
+                    <div className="od-drill-copy">
+                      <span className="od-drill-title">
+                        {searching ? "Search" : activeCategory?.name}
+                      </span>
+                      {!searching && activeCategory && (
+                        <span className="od-drill-hint">
+                          {activeCategory.items.length} item
+                          {activeCategory.items.length === 1 ? "" : "s"}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                <div className="od-search">
+                  <span className="od-search-icon" aria-hidden>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                      <circle cx="11" cy="11" r="7" stroke="currentColor" strokeWidth="2" />
+                      <path d="M20 20l-3.5-3.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                    </svg>
+                  </span>
+                  <input
+                    className="od-search-input"
+                    value={menuQuery}
+                    onChange={(e) => setMenuQuery(e.target.value)}
+                    placeholder="Search menu"
+                    type="search"
+                    enterKeyHint="search"
+                    autoCapitalize="off"
+                    autoCorrect="off"
+                  />
+                  {searching && (
+                    <button
+                      type="button"
+                      className="od-search-clear"
+                      aria-label="Clear search"
+                      onClick={() => setMenuQuery("")}
+                    >
+                      ×
+                    </button>
+                  )}
+                </div>
+
+                {!inSection ? (
+                  <div className="od-cat-grid" aria-label="Categories">
+                    {menu.map((cat, i) => {
+                      const count = cat.items.filter((it) => it.available).length;
+                      const onTicket = qtyByCategory.get(cat.id) ?? 0;
+                      return (
+                        <button
+                          key={cat.id}
+                          type="button"
+                          className={`od-cat-card od-tone-${i % CAT_TONES}${
+                            onTicket > 0 ? " is-in" : ""
+                          }`}
+                          onClick={() => setActiveCatId(cat.id)}
+                        >
+                          <span className="od-cat-name">{cat.name}</span>
+                          <span className="od-cat-count">
+                            {count} item{count === 1 ? "" : "s"}
+                          </span>
+                          {onTicket > 0 && (
+                            <span className="od-cat-badge">{onTicket}</span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="od-item-grid">
+                    {browsing.length === 0 && (
+                      <p className="od-empty-menu">
+                        {searching ? "No matching items" : "No items in this section"}
+                      </p>
+                    )}
+                    {browsing.map(({ item, category }) => {
+                      const qty = qtyByItem.get(item.id) ?? 0;
+                      const catIndex = menu.findIndex((c) => c.id === category.id);
+                      const band = (catIndex >= 0 ? catIndex : 0) % CAT_TONES;
+                      const choices = itemChoices(item);
+                      const configurable = choices.length > 0;
+                      return (
+                        <button
+                          key={item.id}
+                          type="button"
+                          className={`od-item od-tone-${band}${
+                            qty > 0 ? " is-in" : ""
+                          }${item.available ? "" : " is-86"}`}
+                          disabled={!item.available}
+                          onClick={() => onTapMenuItem(item, category)}
+                        >
+                          <span className="od-item-name">{item.name}</span>
+                          {item.description ? (
+                            <span className="od-item-desc">{item.description}</span>
+                          ) : null}
+                          {searching && (
+                            <span className="od-item-cat">{category.name}</span>
+                          )}
+                          <span className="od-item-meta">
+                            <span className="od-item-price">
+                              {formatPrice(item.pricePence)}
+                            </span>
+                            {configurable && item.available && (
+                              <span className="od-item-opts">Options</span>
+                            )}
+                            {!item.available && (
+                              <span className="od-menu-86">86</span>
+                            )}
+                          </span>
+                          {qty > 0 && (
+                            <span className="od-item-qty">{qty}</span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </>
+            )}
+          </section>
+
           <aside className="od-ticket" ref={ticketPaneRef}>
             <div className="od-ticket-header">
               <div className="od-ticket-row">
@@ -640,10 +875,11 @@ export function OrderWorkspace() {
                   className="od-link-btn"
                   onClick={changeTable}
                 >
-                  Change table
+                  Change
                 </button>
               </div>
               <div className="od-ticket-row">
+                <span className="od-ticket-label">Covers</span>
                 <div className="od-covers" aria-label="Covers">
                   <button
                     type="button"
@@ -690,12 +926,7 @@ export function OrderWorkspace() {
               </div>
             </div>
 
-            <div
-              className="od-ticket-body"
-              onClick={(e) => {
-                if (e.target === e.currentTarget) setExpandedKey(null);
-              }}
-            >
+            <div className="od-ticket-body">
               {sentItemCount > 0 && (
                 <div className="od-sent">
                   <button
@@ -703,7 +934,7 @@ export function OrderWorkspace() {
                     className="od-sent-toggle"
                     onClick={() => setSentOpen((o) => !o)}
                   >
-                    {sentOpen ? "▾" : "▸"} Sent ({sentItemCount} items)
+                    {sentOpen ? "▾" : "▸"} Sent ({sentItemCount})
                   </button>
                   {sentOpen && (
                     <div className="od-sent-list">
@@ -720,75 +951,57 @@ export function OrderWorkspace() {
                 </div>
               )}
 
+              {lines.length === 0 && (
+                <p className="od-ticket-empty">Tap items to build the ticket</p>
+              )}
+
               {groupedLines.map((group) => (
                 <div key={group.id}>
                   <div className="od-course-head">{group.label}</div>
                   {group.lines.map((line) => {
-                    const open = expandedKey === line.key;
                     const unavailable = highlightIds.includes(line.menuItemId);
                     return (
                       <div
                         key={line.key}
-                        className={`od-line${open ? " is-open" : ""}${
-                          unavailable ? " is-unavailable" : ""
-                        }`}
-                        onClick={() =>
-                          setExpandedKey((k) =>
-                            k === line.key ? null : line.key
-                          )
-                        }
+                        className={`od-line${unavailable ? " is-unavailable" : ""}`}
                       >
                         <div className="od-line-main">
                           <span className="od-line-qty">{line.qty}×</span>
-                          <span>{line.name}</span>
-                        </div>
-                        {line.notes ? (
-                          <div className="od-line-notes">{line.notes}</div>
-                        ) : null}
-                        {open && (
-                          <div
-                            className="od-line-actions"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            <button
-                              type="button"
-                              className="od-line-action"
-                              aria-label="Decrease"
-                              onClick={() => updateLineQty(line.key, -1)}
-                            >
-                              −
-                            </button>
-                            <button
-                              type="button"
-                              className="od-line-action"
-                              aria-label="Increase"
-                              onClick={() => updateLineQty(line.key, 1)}
-                            >
-                              +
-                            </button>
-                            <button
-                              type="button"
-                              className="od-line-action"
-                              onClick={() => openNoteSheet(line)}
-                            >
-                              Note
-                            </button>
-                            <button
-                              type="button"
-                              className="od-line-action"
-                              onClick={() => cycleLineCourse(line.key)}
-                            >
-                              Course
-                            </button>
-                            <button
-                              type="button"
-                              className="od-line-action is-danger"
-                              onClick={() => removeLine(line.key)}
-                            >
-                              Remove
-                            </button>
+                          <div className="od-line-copy">
+                            <div className="od-line-name-row">
+                              <span className="od-line-name">{line.name}</span>
+                              <span className="od-line-price">
+                                {formatPrice(line.pricePence * line.qty)}
+                              </span>
+                            </div>
+                            {line.notes ? (
+                              <div className="od-line-notes">{line.notes}</div>
+                            ) : null}
                           </div>
-                        )}
+                        </div>
+                        <div className="od-line-tools">
+                          <button
+                            type="button"
+                            className="od-line-chip"
+                            onClick={() => openNoteSheet(line)}
+                          >
+                            Note
+                          </button>
+                          <button
+                            type="button"
+                            className="od-line-chip"
+                            onClick={() => cycleLineCourse(line.key)}
+                          >
+                            {courseLabel(line.course)}
+                          </button>
+                          <button
+                            type="button"
+                            className="od-line-chip is-danger"
+                            onClick={() => updateLineQty(line.key, -1)}
+                          >
+                            Remove
+                          </button>
+                        </div>
                       </div>
                     );
                   })}
@@ -801,6 +1014,7 @@ export function OrderWorkspace() {
                 <span>
                   {lineCount} item{lineCount === 1 ? "" : "s"}
                 </span>
+                <span className="od-ticket-total">{formatPrice(ticketTotal)}</span>
               </div>
               <button
                 type="button"
@@ -812,98 +1026,6 @@ export function OrderWorkspace() {
               </button>
             </div>
           </aside>
-
-          <section className="od-menu">
-            <div className="od-cat-tabs" role="tablist" aria-label="Categories">
-              {menu.map((cat) => (
-                <button
-                  key={cat.id}
-                  type="button"
-                  role="tab"
-                  aria-selected={cat.id === activeCatId}
-                  className={`od-cat-tab${cat.id === activeCatId ? " is-active" : ""}`}
-                  onClick={() => setActiveCatId(cat.id)}
-                >
-                  {cat.name}
-                </button>
-              ))}
-            </div>
-            <div className="od-menu-grid">
-              {(activeCategory?.items ?? []).map((item) => {
-                const qty = qtyByItem.get(item.id) ?? 0;
-                const catIndex = menu.findIndex((c) => c.id === activeCatId);
-                const band = (catIndex >= 0 ? catIndex : 0) % 8;
-                return (
-                  <button
-                    key={item.id}
-                    type="button"
-                    className="od-menu-tile"
-                    disabled={!item.available}
-                    onClick={() =>
-                      activeCategory && onTapMenuItem(item, activeCategory)
-                    }
-                  >
-                    <span className={`od-menu-band od-menu-band-${band}`} />
-                    <span className="od-menu-name">{item.name}</span>
-                    <span className="od-menu-price">
-                      {formatPrice(item.pricePence)}
-                    </span>
-                    {!item.available ? (
-                      <span className="od-menu-86">86</span>
-                    ) : qty > 0 ? (
-                      <span className="od-menu-badge">{qty}</span>
-                    ) : null}
-                  </button>
-                );
-              })}
-            </div>
-          </section>
-        </div>
-      )}
-
-      {choiceFlow && choiceGroup && (
-        <div
-          className="od-sheet-backdrop"
-          onClick={() => setChoiceFlow(null)}
-          role="presentation"
-        >
-          <div
-            className="od-sheet"
-            role="dialog"
-            aria-label={choiceGroup.label}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="od-sheet-head">
-              <span className="od-sheet-title">{choiceGroup.label}</span>
-              <button
-                type="button"
-                className="od-sheet-close"
-                aria-label="Cancel"
-                onClick={() => setChoiceFlow(null)}
-              >
-                ×
-              </button>
-            </div>
-            {choiceGroup.options.map((opt) => (
-              <button
-                key={opt}
-                type="button"
-                className="od-sheet-option"
-                onClick={() => pickChoiceOption(opt)}
-              >
-                {opt}
-              </button>
-            ))}
-            {!choiceGroup.required && (
-              <button
-                type="button"
-                className="od-sheet-skip"
-                onClick={skipChoice}
-              >
-                Skip
-              </button>
-            )}
-          </div>
         </div>
       )}
 

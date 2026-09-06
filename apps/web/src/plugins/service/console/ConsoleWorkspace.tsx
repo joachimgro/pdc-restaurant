@@ -11,7 +11,6 @@ import { HeaderStrip } from "./HeaderStrip";
 import { NewBookingPanel } from "./NewBookingPanel";
 import { PacingRibbon } from "./PacingRibbon";
 import { ReservationDrawer } from "./ReservationDrawer";
-import { ReservationList } from "./ReservationList";
 import { ServiceCanvas } from "./ServiceCanvas";
 import { WaitlistPanel } from "./WaitlistPanel";
 import { formatHHMM, parseHHMM } from "./status";
@@ -29,10 +28,9 @@ import "./console.css";
 const TICK_MS = 30_000;
 
 const ALL_VIEWS: { id: ConsoleView; label: string }[] = [
-  { id: "today", label: "Today" },
-  { id: "waitlist", label: "Waitlist" },
-  { id: "floor", label: "Floor" },
   { id: "calendar", label: "Calendar" },
+  { id: "floor", label: "Floor" },
+  { id: "waitlist", label: "Waitlist" },
 ];
 
 export function ConsoleWorkspace() {
@@ -71,14 +69,21 @@ export function ConsoleWorkspace() {
       searchParams.get("tab")
     );
     if (fromUrl === "waitlist" && caps && !caps.waitlist) {
-      setView("today");
+      setView("calendar");
+      return;
+    }
+    // Today list view removed — old deep links land on Calendar.
+    if (fromUrl === "today") {
+      setView("calendar");
+      router.replace(serviceConsoleViewUrl("calendar"), { scroll: false });
       return;
     }
     if (fromUrl) setView(fromUrl);
-  }, [searchParams, setView, caps]);
+  }, [searchParams, setView, caps, router]);
 
   useEffect(() => {
-    if (view === "waitlist" && caps && !caps.waitlist) setView("today");
+    if (view === "waitlist" && caps && !caps.waitlist) setView("calendar");
+    if (view === "today") setView("calendar");
   }, [view, caps, setView]);
 
   useEffect(() => {
@@ -142,9 +147,7 @@ export function ConsoleWorkspace() {
             New booking
           </button>
         </nav>
-        {view !== "calendar" && view !== "waitlist" && !selectedId && (
-          <PacingRibbon />
-        )}
+        {view === "floor" && !selectedId && <PacingRibbon />}
       </div>
 
       <div className="sc-body">
@@ -153,10 +156,9 @@ export function ConsoleWorkspace() {
             <ReservationDrawer />
           ) : (
             <>
-              {view === "today" && <ReservationList />}
-              {view === "waitlist" && caps?.waitlist === true && <WaitlistPanel />}
-              {view === "floor" && <FloorPane />}
               {view === "calendar" && <CalendarView />}
+              {view === "floor" && <FloorPane />}
+              {view === "waitlist" && caps?.waitlist === true && <WaitlistPanel />}
             </>
           )}
         </main>

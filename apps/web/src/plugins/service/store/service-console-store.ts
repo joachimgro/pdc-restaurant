@@ -142,7 +142,7 @@ export const useServiceConsole = create<ServiceConsoleState>((set, get) => {
     guestProfiles: {},
     payments: {},
 
-    view: "today",
+    view: "calendar",
     selectedId: null,
     drawerEvents: [],
     remoteChangeNotice: false,

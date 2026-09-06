@@ -11,6 +11,7 @@ import {
   getKitchenMenu,
   importKitchenMenu,
   listKitchenTickets,
+  countKitchenTickets,
   reorderKitchenMenu,
   setMenuItemAvailability,
   updateKitchenTicketStatus,
@@ -736,7 +737,7 @@ export async function handleReorderKitchenMenu(
   return jsonResponse(request, env, { categories });
 }
 
-/** GET /kitchen/tickets?station=&status= */
+/** GET /kitchen/tickets?station=&status=&from=&to=&active=&table=&limit=&offset=&order= */
 export async function handleListKitchenTickets(
   request: Request,
   env: Env
@@ -752,14 +753,31 @@ export async function handleListKitchenTickets(
   const url = new URL(request.url);
   const station = url.searchParams.get("station");
   const status = url.searchParams.get("status");
+  const from = url.searchParams.get("from");
+  const to = url.searchParams.get("to");
+  const table = url.searchParams.get("table");
+  const active = url.searchParams.get("active") === "1";
+  const order = url.searchParams.get("order") === "desc" ? "desc" : "asc";
+  const limitRaw = url.searchParams.get("limit");
+  const offsetRaw = url.searchParams.get("offset");
+  const limit = limitRaw ? Number(limitRaw) : null;
+  const offset = offsetRaw ? Number(offsetRaw) : 0;
 
-  const tickets = await listKitchenTickets(
-    env,
-    locationId,
-    station || null,
-    status || null
-  );
-  return jsonResponse(request, env, { tickets });
+  const opts = {
+    from: from || null,
+    to: to || null,
+    table: table || null,
+    active,
+    order,
+    limit: limit != null && Number.isFinite(limit) ? limit : null,
+    offset: Number.isFinite(offset) ? offset : 0,
+  };
+
+  const [tickets, total] = await Promise.all([
+    listKitchenTickets(env, locationId, station || null, status || null, opts),
+    countKitchenTickets(env, locationId, station || null, status || null, opts),
+  ]);
+  return jsonResponse(request, env, { tickets, total });
 }
 
 /** POST /kitchen/tickets */

@@ -161,11 +161,27 @@ export function reorderKitchenMenu(input: {
 
 export function fetchKitchenTickets(
   station?: string,
-  status?: string
-): Promise<ApiResult<{ tickets: KitchenTicket[] }>> {
+  status?: string,
+  opts?: {
+    from?: string;
+    to?: string;
+    table?: string;
+    active?: boolean;
+    order?: "asc" | "desc";
+    limit?: number;
+    offset?: number;
+  }
+): Promise<ApiResult<{ tickets: KitchenTicket[]; total: number }>> {
   const params = new URLSearchParams();
   if (station) params.set("station", station);
   if (status) params.set("status", status);
+  if (opts?.from) params.set("from", opts.from);
+  if (opts?.to) params.set("to", opts.to);
+  if (opts?.table) params.set("table", opts.table);
+  if (opts?.active) params.set("active", "1");
+  if (opts?.order) params.set("order", opts.order);
+  if (opts?.limit != null) params.set("limit", String(opts.limit));
+  if (opts?.offset != null) params.set("offset", String(opts.offset));
   const qs = params.toString();
   return call(`/kitchen/tickets${qs ? `?${qs}` : ""}`);
 }

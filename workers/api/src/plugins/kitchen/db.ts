@@ -212,29 +212,95 @@ export async function getKitchenMenu(
   }));
 }
 
+export type ListKitchenTicketsOpts = {
+  from?: string | null;
+  to?: string | null;
+  limit?: number | null;
+  offset?: number | null;
+  order?: "asc" | "desc";
+  active?: boolean;
+  table?: string | null;
+};
+
+function ticketWhere(
+  env: Env,
+  locationId: string,
+  station: string | null,
+  status: string | null,
+  opts?: ListKitchenTicketsOpts
+): { sql: string; binds: Array<string | number> } {
+  let sql = `WHERE organization_id = ? AND location_id = ?`;
+  const binds: Array<string | number> = [env.ORGANIZATION_ID, locationId];
+
+  if (station) {
+    sql += ` AND station = ?`;
+    binds.push(station);
+  }
+  if (status) {
+    sql += ` AND status = ?`;
+    binds.push(status);
+  } else if (opts?.active) {
+    sql += ` AND status IN ('new', 'in_progress', 'ready')`;
+  }
+  if (opts?.from) {
+    sql += ` AND created_at >= ?`;
+    binds.push(`${opts.from}T00:00:00.000Z`);
+  }
+  if (opts?.to) {
+    const [y, m, d] = opts.to.split("-").map(Number);
+    const next = new Date(Date.UTC(y, m - 1, d + 1)).toISOString().slice(0, 10);
+    sql += ` AND created_at < ?`;
+    binds.push(`${next}T00:00:00.000Z`);
+  }
+  if (opts?.table?.trim()) {
+    sql += ` AND lower(COALESCE(table_label, '')) LIKE ?`;
+    binds.push(`%${opts.table.trim().toLowerCase()}%`);
+  }
+
+  return { sql, binds };
+}
+
+export async function countKitchenTickets(
+  env: Env,
+  locationId: string,
+  station: string | null,
+  status: string | null,
+  opts?: ListKitchenTicketsOpts
+): Promise<number> {
+  const { sql, binds } = ticketWhere(env, locationId, station, status, opts);
+  const row = await env.DB.prepare(
+    `SELECT COUNT(*) AS n FROM kitchen_tickets ${sql}`
+  )
+    .bind(...binds)
+    .first<{ n: number }>();
+  return row?.n ?? 0;
+}
+
 export async function listKitchenTickets(
   env: Env,
   locationId: string,
   station: string | null,
-  status: string | null
+  status: string | null,
+  opts?: ListKitchenTicketsOpts
 ): Promise<KitchenTicket[]> {
+  const { sql, binds } = ticketWhere(env, locationId, station, status, opts);
+  const dir = opts?.order === "desc" ? "DESC" : "ASC";
   let query = `SELECT id, location_id, reservation_id, table_label, station, status, notes,
                       serve_mode, covers, order_key,
                       started_at, ready_at, served_at, created_at, updated_at
                FROM kitchen_tickets
-               WHERE organization_id = ? AND location_id = ?`;
-  const binds: string[] = [env.ORGANIZATION_ID, locationId];
+               ${sql}
+               ORDER BY created_at ${dir}`;
 
-  if (station) {
-    query += ` AND station = ?`;
-    binds.push(station);
+  if (opts?.limit != null && opts.limit > 0) {
+    query += ` LIMIT ?`;
+    binds.push(Math.min(Math.floor(opts.limit), 200));
+    const offset = Math.max(0, Math.floor(opts.offset ?? 0));
+    if (offset > 0) {
+      query += ` OFFSET ?`;
+      binds.push(offset);
+    }
   }
-  if (status) {
-    query += ` AND status = ?`;
-    binds.push(status);
-  }
-
-  query += ` ORDER BY created_at ASC`;
 
   const tickets = await env.DB.prepare(query)
     .bind(...binds)

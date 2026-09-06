@@ -25,3 +25,247 @@
 .st-panel .sc-stats {
   max-width: 720px;
 }
+
+.st-hist {
+  max-width: 960px;
+  padding: 8px 20px 28px;
+  border-top: 1px solid var(--border);
+  margin-top: 8px;
+}
+
+.st-hist-head {
+  margin-bottom: 12px;
+}
+
+.st-hist-title {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.st-hist-sub {
+  margin: 4px 0 0;
+  font-size: 14px;
+  color: var(--text-muted);
+}
+
+.st-hist-filters {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.st-hist-presets,
+.st-hist-dates {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.st-hist-chip {
+  min-height: 40px;
+  padding: 0 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-pill);
+  background: var(--panel-2);
+  color: var(--text-mid);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.st-hist-chip.is-active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.st-hist-date {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+
+.st-hist-date input,
+.st-hist-search input {
+  min-height: 40px;
+  padding: 0 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+  background: var(--input);
+  color: var(--text);
+  font: inherit;
+}
+
+.st-hist-search {
+  display: flex;
+  gap: 6px;
+}
+
+.st-hist-count,
+.st-hist-empty {
+  font-size: 14px;
+  color: var(--text-muted);
+  margin: 0 0 12px;
+}
+
+.st-hist-day {
+  margin-bottom: 18px;
+}
+
+.st-hist-day-label {
+  margin: 0 0 8px;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.st-hist-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.st-hist-row {
+  width: 100%;
+  display: grid;
+  grid-template-columns: minmax(120px, 1.2fr) 80px 90px 90px minmax(180px, 2fr);
+  gap: 10px;
+  align-items: center;
+  text-align: left;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--panel-2);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.st-hist-row.is-open {
+  border-color: var(--border-strong);
+  background: var(--elevated);
+}
+
+.st-hist-when,
+.st-hist-table {
+  font-weight: 700;
+}
+
+.st-hist-station,
+.st-hist-times {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.st-hist-times {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.st-hist-status {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.st-hist-status.is-served {
+  color: var(--green);
+}
+
+.st-hist-status.is-ready {
+  color: #7dd3fc;
+}
+
+.st-hist-status.is-void {
+  color: var(--accent);
+}
+
+.st-hist-detail {
+  padding: 4px 14px 14px;
+  border: 1px solid var(--border);
+  border-top: none;
+  border-radius: 0 0 var(--r-md) var(--r-md);
+  margin-top: -8px;
+  background: var(--elevated);
+}
+
+.st-hist-items {
+  margin: 10px 0 8px;
+  font-size: 15px;
+  font-weight: 650;
+}
+
+.st-hist-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 14px;
+  padding: 4px 0;
+}
+
+.st-hist-notes {
+  color: var(--accent);
+  font-weight: 650;
+}
+
+.st-hist-stamps {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin: 12px 0 0;
+}
+
+.st-hist-stamps dt {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.st-hist-stamps dd {
+  margin: 2px 0 0;
+  font-weight: 700;
+}
+
+.st-hist-more {
+  width: 100%;
+  min-height: 48px;
+  margin-top: 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+  background: var(--panel-2);
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+@media (max-width: 800px) {
+  .st-hist-row {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .st-hist-times {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
+  }
+
+  .st-hist-stamps {
+    grid-template-columns: 1fr;
+  }
+}

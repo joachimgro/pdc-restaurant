@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { fetchAuthMe } from "@/lib/api/client";
 import { fetchCapabilities, type Capabilities } from "@/lib/api/capabilities";
 import {
@@ -37,11 +37,12 @@ import {
 } from "./stations";
 import "./kitchen.css";
 
-type KitchenMode = "chef" | "ready" | "menu";
+type KitchenMode = "chef" | "pass" | "menu";
 
 const MODES: { id: KitchenMode | "order"; label: string; hint?: string }[] = [
   { id: "order", label: "Order" },
   { id: "chef", label: "Kitchen" },
+  { id: "pass", label: "Pass", hint: "Pickup" },
   { id: "menu", label: "Menu", hint: "Edit / import" },
 ];
 
@@ -59,6 +60,11 @@ const COURSE_ORDER = ["starter", "main", "dessert"] as const;
 function serveModeLabel(mode: string | null | undefined): string | null {
   if (!mode) return null;
   return SERVE_MODE_LABELS[mode] ?? mode;
+}
+
+function ticketTableName(label: string | null): string {
+  const trimmed = label?.trim();
+  return trimmed && trimmed.length > 0 ? trimmed : "Walk-in";
 }
 
 function groupTicketItemsByCourse(
@@ -98,9 +104,23 @@ function groupTicketItemsByCourse(
   return groups;
 }
 
-function ticketAgeMs(ticket: KitchenTicket, now: number): number {
-  const start = Date.parse(ticket.startedAt ?? ticket.createdAt);
-  if (Number.isNaN(start)) return 0;
+function parseTimeMs(iso: string | null | undefined): number | null {
+  if (!iso) return null;
+  const n = Date.parse(iso);
+  return Number.isNaN(n) ? null : n;
+}
+
+/** Cook timer from POS send; pass timer from Ready (resets on the pass). */
+function ticketAgeMs(
+  ticket: KitchenTicket,
+  now: number,
+  phase: "cook" | "pass" = "cook"
+): number {
+  const start =
+    phase === "pass"
+      ? (parseTimeMs(ticket.readyAt) ?? parseTimeMs(ticket.createdAt))
+      : parseTimeMs(ticket.createdAt);
+  if (start == null) return 0;
   return Math.max(0, now - start);
 }
 
@@ -123,6 +143,25 @@ function formatElapsed(ms: number): string {
   return `${mins}:${String(secs).padStart(2, "0")}`;
 }
 
+function formatLiveClock(now: number): string {
+  return new Date(now).toLocaleTimeString(undefined, {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  });
+}
+
+function formatClock(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleTimeString(undefined, {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+}
+
 function readKitchenLateMinutes(
   brand: Record<string, unknown> | null | undefined
 ): number | null {
@@ -139,6 +178,8 @@ function readKitchenLateMinutes(
 
 export function KitchenWorkspace() {
   const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const [caps, setCaps] = useState<Capabilities | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [mode, setMode] = useState<KitchenMode>("chef");
@@ -157,15 +198,30 @@ export function KitchenWorkspace() {
     menuItemId: string;
     name: string;
   } | null>(null);
+  const [overflowOpen, setOverflowOpen] = useState(false);
 
   const lateMs = lateMinutes * 60_000;
 
   useEffect(() => {
+    const tab = searchParams.get("tab");
+    if (tab === "pass" || tab === "ready") setMode("pass");
+    else if (tab === "menu") setMode("menu");
+    else if (tab === "kitchen" || tab === "chef") setMode("chef");
+  }, [searchParams]);
+
+  useEffect(() => {
     void fetchCapabilities().then(setCaps);
     void fetchAuthMe().then((user) => {
-      setIsAdmin(Boolean(user?.canManageTeam));
+      if (!user) {
+        const next = pathname.startsWith("/kitchen")
+          ? "/kitchen"
+          : "/inbox?view=kitchen";
+        router.replace(`/login?next=${encodeURIComponent(next)}`);
+        return;
+      }
+      setIsAdmin(Boolean(user.canManageTeam));
     });
-  }, []);
+  }, [pathname, router]);
 
   useEffect(() => {
     void (async () => {
@@ -182,7 +238,9 @@ export function KitchenWorkspace() {
   }, []);
 
   const loadBoard = useCallback(async () => {
-    const result = await fetchKitchenTickets();
+    const result = await fetchKitchenTickets(undefined, undefined, {
+      active: true,
+    });
     if (result.ok) setTickets(result.data.tickets);
   }, []);
 
@@ -199,7 +257,7 @@ export function KitchenWorkspace() {
     setError(null);
     const [menuResult, ticketResult] = await Promise.all([
       fetchKitchenMenu(),
-      fetchKitchenTickets(),
+      fetchKitchenTickets(undefined, undefined, { active: true }),
     ]);
     if (!menuResult.ok) {
       setStatus("error");
@@ -226,30 +284,26 @@ export function KitchenWorkspace() {
     return () => window.clearInterval(timer);
   }, [caps?.kitchen, status, loadBoard]);
 
-  // Expo board path retained unused (Phase 4 merge into Kitchen).
   const readyTickets = useMemo(() => {
     const list = tickets.filter((t) => t.status === "ready");
     return [...list].sort(
-      (a, b) => ticketAgeMs(b, now) - ticketAgeMs(a, now)
+      (a, b) => ticketAgeMs(b, now, "pass") - ticketAgeMs(a, now, "pass")
     );
   }, [tickets, now]);
 
   const kitchenTickets = useMemo(() => {
     const list = tickets.filter(
-      (t) =>
-        t.status === "new" ||
-        t.status === "in_progress" ||
-        t.status === "ready"
+      (t) => t.status === "new" || t.status === "in_progress"
     );
     return [...list].sort(
-      (a, b) => ticketAgeMs(b, now) - ticketAgeMs(a, now)
+      (a, b) => ticketAgeMs(b, now, "cook") - ticketAgeMs(a, now, "cook")
     );
   }, [tickets, now]);
 
   const lateCount = useMemo(
     () =>
       kitchenTickets.filter(
-        (t) => ageBand(ticketAgeMs(t, now), lateMs) === "late"
+        (t) => ageBand(ticketAgeMs(t, now, "cook"), lateMs) === "late"
       ).length,
     [kitchenTickets, now, lateMs]
   );
@@ -321,38 +375,171 @@ export function KitchenWorkspace() {
     await loadMenuOnly();
   }
 
+  const kiosk = mode !== "menu";
+  const boardCount = mode === "pass" ? readyTickets.length : kitchenTickets.length;
+
+  function goMode(next: KitchenMode) {
+    setOverflowOpen(false);
+    if (next === "menu") {
+      setMode("menu");
+      router.push("/inbox?view=kitchen&tab=menu");
+      return;
+    }
+    setMode(next);
+    if (pathname.startsWith("/kitchen")) {
+      router.replace(next === "pass" ? "/kitchen?tab=pass" : "/kitchen");
+      return;
+    }
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("view", "kitchen");
+    if (next === "chef") params.delete("tab");
+    else params.set("tab", next);
+    router.replace(`/inbox?${params.toString()}`, { scroll: false });
+  }
+
   if (!caps) {
-    return <div className="kt-loading">Loading…</div>;
+    return (
+      <div className="kt-root kt-kiosk">
+        <header className="kt-kiosk-bar">
+          <time className="kt-kiosk-clock fp-num">{formatLiveClock(now)}</time>
+        </header>
+        <p className="kt-empty">Loading…</p>
+      </div>
+    );
   }
 
   if (!caps.kitchen) {
     return (
-      <div className="kt-root kt-panel">
-        <p>Kitchen module is not enabled for this venue.</p>
+      <div className="kt-root kt-kiosk">
+        <header className="kt-kiosk-bar">
+          <time className="kt-kiosk-clock fp-num">{formatLiveClock(now)}</time>
+        </header>
+        <p className="kt-empty">Kitchen module is not enabled for this venue.</p>
       </div>
     );
   }
 
   if (status === "loading") {
-    return <div className="kt-loading">Loading kitchen</div>;
+    return (
+      <div className="kt-root kt-kiosk">
+        <header className="kt-kiosk-bar">
+          <time className="kt-kiosk-clock fp-num">{formatLiveClock(now)}</time>
+        </header>
+        <p className="kt-empty">Loading kitchen</p>
+      </div>
+    );
   }
 
   if (status === "error") {
     return (
-      <div className="kt-loading">
-        <p>{error}</p>
-        <button type="button" className="kt-btn" onClick={() => void load()}>
-          Try again
-        </button>
+      <div className="kt-root kt-kiosk">
+        <header className="kt-kiosk-bar">
+          <time className="kt-kiosk-clock fp-num">{formatLiveClock(now)}</time>
+        </header>
+        <div className="kt-empty">
+          <p>{error}</p>
+          <button type="button" className="kt-btn" onClick={() => void load()}>
+            Try again
+          </button>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="kt-root" style={{ gridColumn: "2 / -1" }}>
+    <div
+      className={`kt-root${kiosk ? " kt-kiosk" : ""}`}
+      style={kiosk ? undefined : { gridColumn: "2 / -1" }}
+    >
+      {kiosk ? (
+        <header className="kt-kiosk-bar">
+          <time className="kt-kiosk-clock fp-num" dateTime={new Date(now).toISOString()}>
+            {formatLiveClock(now)}
+          </time>
+          <span className="kt-kiosk-title">
+            {mode === "pass" ? "Pass" : "Kitchen"}
+            <span className="kt-board-count fp-num">{boardCount}</span>
+          </span>
+          <div className="kt-kiosk-meta">
+            {lateCount > 0 && mode === "chef" && (
+              <span
+                className="kt-late-pill"
+                title={`Tickets over ${lateMinutes} minutes`}
+              >
+                {lateCount} late
+              </span>
+            )}
+            {lastBumped && (
+              <button
+                type="button"
+                className="kt-btn kt-btn-ghost"
+                disabled={busy}
+                onClick={() => void undoBump()}
+              >
+                Undo
+              </button>
+            )}
+            <div className="kt-overflow-wrap">
+              <button
+                type="button"
+                className="kt-overflow-btn"
+                aria-label="More"
+                aria-expanded={overflowOpen}
+                onClick={() => setOverflowOpen((o) => !o)}
+              >
+                ⋯
+              </button>
+              {overflowOpen && (
+                <div className="kt-overflow-menu" role="menu">
+                  <button
+                    type="button"
+                    className="kt-overflow-item"
+                    role="menuitem"
+                    onClick={() => goMode("chef")}
+                  >
+                    Kitchen
+                  </button>
+                  <button
+                    type="button"
+                    className="kt-overflow-item"
+                    role="menuitem"
+                    onClick={() => goMode("pass")}
+                  >
+                    Pass
+                  </button>
+                  <a
+                    className="kt-overflow-item"
+                    href="/order"
+                    role="menuitem"
+                    onClick={() => setOverflowOpen(false)}
+                  >
+                    Order
+                  </a>
+                  <button
+                    type="button"
+                    className="kt-overflow-item"
+                    role="menuitem"
+                    onClick={() => goMode("menu")}
+                  >
+                    Menu
+                  </button>
+                  <a
+                    className="kt-overflow-item"
+                    href="/inbox"
+                    role="menuitem"
+                    onClick={() => setOverflowOpen(false)}
+                  >
+                    Back to app
+                  </a>
+                </div>
+              )}
+            </div>
+          </div>
+        </header>
+      ) : (
       <div className="kt-panel kt-mode-bar">
         <div
-          className="kt-mode-segment kt-mode-segment-3"
+          className="kt-mode-segment kt-mode-segment-4"
           role="tablist"
           aria-label="Kitchen mode"
         >
@@ -371,9 +558,19 @@ export function KitchenWorkspace() {
                   return;
                 }
                 setMode(m.id);
+                const next = new URLSearchParams(searchParams.toString());
+                next.set("view", "kitchen");
+                if (m.id === "chef") next.delete("tab");
+                else next.set("tab", m.id);
+                router.replace(`/inbox?${next.toString()}`, { scroll: false });
               }}
             >
-              <span className="kt-mode-label">{m.label}</span>
+              <span className="kt-mode-label">
+                {m.label}
+                {m.id === "pass" && readyTickets.length > 0
+                  ? ` · ${readyTickets.length}`
+                  : ""}
+              </span>
               {m.hint ? <span className="kt-mode-hint">{m.hint}</span> : null}
             </button>
           ))}
@@ -399,6 +596,7 @@ export function KitchenWorkspace() {
           )}
         </div>
       </div>
+      )}
 
       {error && (
         <div className="kt-error kt-panel" role="alert">
@@ -451,15 +649,15 @@ export function KitchenWorkspace() {
             }
           />
         )}
-        {/* Expo tab hidden; dead path kept for reference */}
-        {mode === "ready" && (
+        {mode === "pass" && (
           <TicketBoard
-            title="Kitchen"
-            empty="Nothing ready."
+            title="Pass"
+            empty="Nothing waiting on the pass."
             tickets={readyTickets}
             now={now}
             busy={busy}
             lateMinutes={lateMinutes}
+            variant="pass"
             onBump={(id, s) => void setTicketStatus(id, s)}
             onVoid={(id) => void setTicketStatus(id, "void")}
             onEightySix={(menuItemId, name) =>
@@ -493,7 +691,7 @@ async function prepareMenuImage(file: File): Promise<Blob> {
     throw new Error("Please choose a photo or image file");
   }
   const bitmap = await createImageBitmap(file);
-  const maxEdge = 1280;
+  const maxEdge = 1920;
   const scale = Math.min(1, maxEdge / Math.max(bitmap.width, bitmap.height));
   const w = Math.max(1, Math.round(bitmap.width * scale));
   const h = Math.max(1, Math.round(bitmap.height * scale));
@@ -508,7 +706,7 @@ async function prepareMenuImage(file: File): Promise<Blob> {
   ctx.drawImage(bitmap, 0, 0, w, h);
   bitmap.close();
   const blob = await new Promise<Blob | null>((resolve) =>
-    canvas.toBlob((b) => resolve(b), "image/jpeg", 0.82)
+    canvas.toBlob((b) => resolve(b), "image/jpeg", 0.9)
   );
   return blob ?? file;
 }
@@ -793,8 +991,9 @@ function MenuEditor({
       <section className="kt-editor-block">
         <h2 className="kt-board-title">Import menu</h2>
         <p className="kt-editor-help">
-          Photo a printed menu, or paste text with <code>## Mains</code> headings
-          and one dish per line. Review AI results before importing.
+          Photo a printed menu. AI transcribes it, then a second pass tidies
+          names, prices, and sections. Review the JSON below before Import — or
+          paste <code>## Mains</code> text / a categories JSON blob.
         </p>
 
         <div className="kt-editor-row">
@@ -999,6 +1198,7 @@ function TicketBoard({
   now,
   busy,
   lateMinutes,
+  variant = "cook",
   onBump,
   onVoid,
   onEightySix,
@@ -1009,29 +1209,38 @@ function TicketBoard({
   now: number;
   busy: boolean;
   lateMinutes: number;
+  variant?: "cook" | "pass";
   onBump: (id: string, status: "in_progress" | "ready" | "served") => void;
   onVoid: (id: string) => void;
   onEightySix: (menuItemId: string | null, name: string) => void;
 }) {
+  const isPass = variant === "pass";
   return (
-    <div className="kt-board">
+    <div className={`kt-board${isPass ? " kt-board-pass" : ""}`}>
       <header className="kt-board-head">
         <h2 className="kt-board-title">
           {title}
           <span className="kt-board-count fp-num">{tickets.length}</span>
         </h2>
         <p className="kt-board-legend">
-          <span className="kt-dot kt-dot-fresh" /> Fresh
-          <span className="kt-dot kt-dot-warn" /> 8m+
-          <span className="kt-dot kt-dot-late" /> {lateMinutes}m+
+          {isPass ? (
+            "Timer from ready — tap picked up when you leave the pass"
+          ) : (
+            <>
+              <span className="kt-dot kt-dot-fresh" /> Fresh
+              <span className="kt-dot kt-dot-warn" /> 8m+
+              <span className="kt-dot kt-dot-late" /> {lateMinutes}m+
+            </>
+          )}
         </p>
       </header>
       {tickets.length === 0 ? (
         <p className="kt-empty">{empty}</p>
       ) : (
-        <div className="kt-ticket-grid">
+        <div className={`kt-ticket-grid${isPass ? " is-pass" : ""}`}>
           {tickets.map((t) => {
-            const age = ticketAgeMs(t, now);
+            const phase = isPass ? "pass" : "cook";
+            const age = ticketAgeMs(t, now, phase);
             const band = ageBand(age, lateMinutes * 60_000);
             const modeLabel = serveModeLabel(t.serveMode);
             const isBar = normalizeStation(t.station) === "bar";
@@ -1039,31 +1248,52 @@ function TicketBoard({
             const showCourseHeaders =
               courseGroups.length > 1 ||
               courseGroups.some((g) => g.course != null);
-            const canStart = t.status === "new";
             const canReady =
               t.status === "new" || t.status === "in_progress";
             const canServed = t.status === "ready";
             return (
               <article
                 key={t.id}
-                className={`kt-ticket kt-age-${band} kt-ticket-${t.status}`}
+                className={`kt-ticket kt-age-${band} kt-ticket-${t.status}${
+                  isPass ? " is-pass" : ""
+                }`}
               >
                 <div className="kt-ticket-body">
                   <header className="kt-ticket-head">
-                    <span className="kt-ticket-table-wrap">
-                      <span className="kt-ticket-table">
-                        {t.tableLabel ? `T${t.tableLabel}` : "WALK"}
+                    <div className="kt-ticket-table-block">
+                      <span className="kt-ticket-eyebrow">
+                        {isPass ? "Take to" : "Table"}
                       </span>
-                      {modeLabel && (
-                        <span className="kt-serve-badge">{modeLabel}</span>
-                      )}
-                      {isBar && (
-                        <span className="kt-station-chip-inline">Bar</span>
-                      )}
-                    </span>
-                    <span className={`kt-ticket-timer fp-num kt-timer-${band}`}>
-                      {formatElapsed(age)}
-                    </span>
+                      <span className="kt-ticket-table">
+                        {ticketTableName(t.tableLabel)}
+                      </span>
+                      <span className="kt-ticket-meta">
+                        {t.covers != null && t.covers > 0 && (
+                          <span className="kt-serve-badge">
+                            {t.covers} cover{t.covers === 1 ? "" : "s"}
+                          </span>
+                        )}
+                        {modeLabel && (
+                          <span className="kt-serve-badge">{modeLabel}</span>
+                        )}
+                        {isBar && (
+                          <span className="kt-station-chip-inline">Bar</span>
+                        )}
+                      </span>
+                    </div>
+                    <div className="kt-ticket-times">
+                      <span className={`kt-ticket-timer fp-num kt-timer-${band}`}>
+                        {formatElapsed(age)}
+                      </span>
+                      {isPass && t.readyAt ? (
+                        <span className="kt-ticket-sent is-ready">
+                          Ready {formatClock(t.readyAt)}
+                        </span>
+                      ) : null}
+                      <span className="kt-ticket-sent">
+                        Sent {formatClock(t.createdAt)}
+                      </span>
+                    </div>
                   </header>
                   <ul className="kt-ticket-items">
                     {courseGroups.map((group, gi) => (
@@ -1086,7 +1316,7 @@ function TicketBoard({
                                   </span>
                                 ) : null}
                               </span>
-                              {item.menuItemId ? (
+                              {!isPass && item.menuItemId ? (
                                 <button
                                   type="button"
                                   className="kt-86-btn"
@@ -1107,17 +1337,7 @@ function TicketBoard({
                   </ul>
                   {t.notes && <p className="kt-ticket-mods">{t.notes}</p>}
                   <div className="kt-ticket-actions">
-                    {canStart && (
-                      <button
-                        type="button"
-                        className="kt-bump-btn"
-                        disabled={busy}
-                        onClick={() => onBump(t.id, "in_progress")}
-                      >
-                        Start
-                      </button>
-                    )}
-                    {canReady && (
+                    {!isPass && canReady && (
                       <button
                         type="button"
                         className="kt-bump-btn kt-bump-ready"
@@ -1127,27 +1347,29 @@ function TicketBoard({
                         Ready
                       </button>
                     )}
-                    {canServed && (
+                    {isPass && canServed && (
                       <button
                         type="button"
-                        className="kt-bump-btn kt-bump-served"
+                        className="kt-bump-btn kt-bump-served kt-bump-pickup"
                         disabled={busy}
                         onClick={() => onBump(t.id, "served")}
                       >
-                        Served
+                        Picked up
                       </button>
                     )}
                   </div>
                 </div>
-                <button
-                  type="button"
-                  className="kt-void-btn"
-                  disabled={busy}
-                  onClick={() => onVoid(t.id)}
-                  aria-label="Void ticket"
-                >
-                  Void
-                </button>
+                {!isPass && (
+                  <button
+                    type="button"
+                    className="kt-void-btn"
+                    disabled={busy}
+                    onClick={() => onVoid(t.id)}
+                    aria-label="Void ticket"
+                  >
+                    Void
+                  </button>
+                )}
               </article>
             );
           })}

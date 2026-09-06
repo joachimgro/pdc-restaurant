@@ -1,6 +1,7 @@
 import type { ConsoleView } from "./store/service-console-store";
 
-const CONSOLE_VIEWS: ConsoleView[] = ["today", "waitlist", "floor", "calendar"];
+/** Includes legacy `today` so old deep links still parse, then redirect. */
+const CONSOLE_VIEWS: ConsoleView[] = ["calendar", "floor", "waitlist", "today"];
 
 export function isConsoleView(value: string): value is ConsoleView {
   return (CONSOLE_VIEWS as string[]).includes(value);
@@ -17,8 +18,12 @@ export function consoleViewFromParam(
 }
 
 export function serviceConsoleViewUrl(view: ConsoleView): string {
-  if (view === "today" || view === "floor" || view === "waitlist") {
+  if (view === "floor" || view === "waitlist") {
     return `/inbox?view=service&tab=${view}`;
+  }
+  // Calendar is the default service surface; today redirects there.
+  if (view === "calendar" || view === "today") {
+    return `/inbox?view=calendar`;
   }
   return `/inbox?view=${view}`;
 }
